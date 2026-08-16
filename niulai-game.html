@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>牛来运转 · 放置养牛 · 股市模拟</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&display=swap" rel="stylesheet">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#ff2d2d">
+<link rel="stylesheet" href="niulai.css">
+<script charset="UTF-8" id="LA_COLLECT" src="//sdk.51.la/js-sdk-pro.min.js"></script>
+<script>LA.init({id:"KXTq9VxXLOiPWWb5",ck:"KXTq9VxXLOiPWWb5"})</script>
+</head>
+<body>
+
+<!-- 背景层 -->
+<div class="bg-layer"></div>
+<div class="kline-bg" id="klineBg"></div>
+
+<!-- 顶部状态栏 -->
+<div class="top-bar">
+  <div class="resource-chip clickable" id="chipCattle" role="button" tabindex="0" title="点我 +1 头牛" aria-label="点击养一头牛"><span class="icon">🐂</span><span class="val" id="valCattle">1</span></div>
+  <div class="run-chip clickable" id="runChip" role="button" tabindex="0" title="点击开始 / 暂停 / 继续本局"><span>⏱</span><span class="clock" id="runClock">10:00</span></div>
+  <button class="run-reset" id="runResetBtn" type="button" title="重置游戏（重新开始一局）" aria-label="重置游戏">✕</button>
+  <div class="market-indicator market-bull" id="marketInd"><span id="marketEmoji">🐂</span><span id="marketText">牛市</span></div>
+  <button class="settings-btn" id="settingsBtn" aria-label="设置">⚙</button>
+</div>
+<div class="cycle-bar-wrap"><div class="cycle-bar-fill" id="cycleBar"></div></div>
+
+<!-- Toast 容器 -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- 牛来彩蛋层 -->
+<div class="niulai-overlay" id="niulaiOverlay">
+  <div class="niulai-text">牛来！</div>
+</div>
+
+<!-- 万亿彩蛋层（净值突破 1 万亿触发，金币雨 + 万亿牛神） -->
+<div class="trillion-overlay" id="trillionOverlay">
+  <div class="trillion-box">
+    <div class="trillion-text">万亿</div>
+    <div class="trillion-title">🌌 万亿牛神 🌌</div>
+    <div class="trillion-sub" id="trillionSub"></div>
+  </div>
+</div>
+
+<!-- 主区域 -->
+<main class="game-main">
+  <!-- 主视觉：大盘 K 线图（替代牛形角色） -->
+  <section class="bull-stage">
+    <div class="bull-title">牛来运转</div>
+    <div class="bull-subtitle">股市模拟 · 牛熊K线 · 牛运亨通</div>
+    <div class="kline-wrap" id="klineWrap" role="button" aria-label="点击抓取行情获取牛运值">
+      <canvas id="klineChart" class="kline-chart"></canvas>
+    </div>
+    <div class="kline-hint">点击 K 线图抓取行情 · 牛运值 <b>+1</b></div>
+  </section>
+
+  <!-- 每日任务条 -->
+  <div class="daily-task" id="dailyTask">
+    <span class="task-icon">📋</span>
+    <span class="task-text" id="dailyTaskText">今日牛运值 +10%</span>
+    <span class="task-bonus" id="dailyTaskBonus">自动生效中</span>
+  </div>
+
+  <!-- 牛运值 / 牛币 饼图（左右） -->
+  <section class="pie-section">
+    <div class="pie-card clickable" id="pieLuck">
+      <svg class="donut" viewBox="0 0 100 100" aria-label="牛运值">
+        <circle class="donut-bg" cx="50" cy="50" r="42"></circle>
+        <circle class="donut-fg luck" cx="50" cy="50" r="42" id="luckArc" transform="rotate(-90 50 50)"></circle>
+        <text x="50" y="47" class="donut-num" id="luckNum">0</text>
+        <text x="50" y="64" class="donut-cap">牛运值</text>
+      </svg>
+    </div>
+    <div class="pie-card clickable" id="pieCoins">
+      <svg class="donut" viewBox="0 0 100 100" aria-label="牛币">
+        <circle class="donut-bg" cx="50" cy="50" r="42"></circle>
+        <circle class="donut-fg coins" cx="50" cy="50" r="42" id="coinsArc" transform="rotate(-90 50 50)"></circle>
+        <text x="50" y="47" class="donut-num" id="coinsNum">100</text>
+        <text x="50" y="64" class="donut-cap">牛币</text>
+      </svg>
+    </div>
+  </section>
+
+  <!-- 账户看板：资产 / 负债 实时透明展示 -->
+  <div class="account-strip" id="accountStrip">
+    <div class="as-item"><span class="as-label">现金</span><b class="as-val" id="asCash">100</b></div>
+    <div class="as-item"><span class="as-label">持仓市值</span><b class="as-val" id="asPos">0</b></div>
+    <div class="as-item"><span class="as-label">总资产</span><b class="as-val" id="asTotal">100</b></div>
+    <div class="as-item danger"><span class="as-label">负债</span><b class="as-val" id="asDebt">0</b></div>
+    <div class="as-item net"><span class="as-label">净值</span><b class="as-val" id="asNet">100</b></div>
+  </div>
+
+  <!-- 4 个菜单已迁至「设置」页（⚙），主视图默认展示股市面板 -->
+
+  <!-- 股市面板 -->
+  <section class="panel active" id="panel-stocks" role="tabpanel">
+    <div class="leverage-bar" id="leverageBar"></div>
+    <div class="window-hint" id="windowHint">🚀 暴涨窗口！限时 <span class="cd" id="windowCd">0</span>s 内买入牛股，收益 ×3！</div>
+    <div class="stock-grid" id="stockGrid"></div>
+  </section>
+
+  <!-- 道具面板 -->
+  <section class="panel" id="panel-items" role="tabpanel">
+    <div id="itemList"></div>
+  </section>
+
+  <!-- 许愿池面板 -->
+  <section class="panel" id="panel-wish" role="tabpanel">
+    <div class="wish-pool">
+      <div class="wish-icon">🌟</div>
+      <div class="wish-title">许愿池</div>
+      <div class="wish-desc">消耗 <strong style="color:var(--gold-soft)">30 牛运值</strong> 许下心愿<br>下个牛市周期收益 ×1.5！<br>成功率 80%</div>
+      <button class="wish-btn" id="wishBtn">许愿 (30 🍀)</button>
+      <div class="wish-stat" id="wishStat">已许愿 0 次 · 成功 0 次</div>
+    </div>
+  </section>
+
+  <!-- 成就面板 -->
+  <section class="panel" id="panel-achv" role="tabpanel">
+    <div class="achv-grid" id="achvGrid"></div>
+  </section>
+
+  <!-- 本局流水账（明细）：买入/卖出/强平/结算/事件/窗口/许愿/成就/彩蛋 全程留痕 -->
+  <div class="ledger open" id="ledger">
+    <div class="ledger-head" id="ledgerHead" role="button" tabindex="0" title="展开/收起本局流水">
+      <span>📒 本局流水</span>
+      <span class="ledger-toggle" id="ledgerToggle">收起 ▴</span>
+    </div>
+    <div class="ledger-body" id="ledgerBody"></div>
+  </div>
+</main>
+
+<!-- 设置（独立页面） -->
+<div class="modal-overlay settings-page" id="settingsModal">
+  <div class="settings-page-inner">
+    <div class="settings-head">
+      <div class="settings-title">⚙ 设置</div>
+      <button class="settings-back" id="modalCloseBtn" aria-label="返回游戏">✕</button>
+    </div>
+    <div class="settings-scroll">
+
+      <!-- 4 菜单导航 -->
+      <section class="set-block">
+        <div class="set-block-title">🧭 功能菜单</div>
+        <div class="set-nav">
+          <button class="set-nav-btn" data-goto="stocks"><span>📈</span>股市</button>
+          <button class="set-nav-btn" data-goto="items"><span>🎁</span>道具</button>
+          <button class="set-nav-btn" data-goto="wish"><span>⭐</span>许愿池</button>
+          <button class="set-nav-btn" data-goto="achv"><span>🏆</span>成就</button>
+        </div>
+      </section>
+
+      <!-- 玩法说明 -->
+      <section class="set-block">
+        <div class="set-block-title">📖 玩法说明</div>
+        <div class="modal-body">
+          <p><strong>🐂 养牛：</strong>点击顶部左上角的 🐂 直接 <b>+1 头牛</b>；每头牛每秒自动产出牛运值，牛越多越快。牛运值满 100 可去许愿池许愿。每只牛花费随数量递增（首头 50🪙）。</p>
+          <p><strong>📈 股市：</strong>用牛币购买股票卡片，每 15 秒一次行情结算。顶部「大盘 N」是<strong style="color:var(--gold-soft)">基数线 100</strong>——<strong style="color:var(--bull-red-soft)">超过 100 是牛市</strong>、<strong style="color:var(--bear-blue-soft)">低于 100 是熊市</strong>、贴近 100 为震荡。牛市牛股猛涨，熊市牛股暴跌但熊股获利。</p>
+          <p><strong>💰 买入：</strong>点「买入」按钮<strong style="color:var(--gold-soft)">连续点 3 次即把所有可用资金全部买入</strong>（第 1 次约 1/3、第 2 次约 2/3、第 3 次买满），最低每次至少买 1 份；资金不足时提示「已满仓」。</p>
+          <p><strong>⚖️ 杠杆：</strong><strong style="color:var(--gold-soft)">默认「无杠杆」= 正常买卖，无爆仓，可长拿穿越牛熊</strong>；选 2x / 3x / 5x / 10x 才"加杠杆"——借 (L−1) 倍本金、仓位放大为 L 倍。<strong style="color:var(--bull-red-soft)">每个行情周期，只要该股票单周期涨跌幅度达到「实操强平线」，平台就直接强制清仓这只股票</strong>（不论牛市/熊市、不论涨/跌）。强平线：2x≈42%、3x≈27%、5x≈16%、10x≈8.5%，倍数越高容错越小；若清仓后净值归零则本局结束。借的钱要还本金+利息。<a href="#" id="levHelpLink" style="color:var(--bull-red-soft);text-decoration:underline;">点此看完整对照表 ❔</a></p>
+          <p><strong>🎁 道具：</strong>「牛来符」可抵御一次熊市亏损；「牛运加速」双倍牛运值产出 30 秒。</p>
+          <p><strong>⭐ 许愿池：</strong>消耗牛运值许愿，下个牛市周期收益加成 50%。</p>
+          <p><strong>🏆 成就：</strong>达成条件解锁成就，挑战「牛气冲天」「熊市不倒」等称号。</p>
+          <p><strong>✨ 牛来彩蛋：</strong>每次进入牛市有几率触发「牛来！」全屏爆炸，赠送丰厚奖励！</p>
+        </div>
+      </section>
+
+      <!-- 存档管理 -->
+      <section class="set-block">
+        <div class="set-block-title">💾 存档管理（防止丢档）</div>
+        <div class="set-hint">导出可备份全部进度；「重置存档」会清空进度、排行榜与昵称，操作不可恢复，请先导出。</div>
+        <button class="modal-close" id="muteBtn" style="background:rgba(255,210,63,0.15);color:var(--gold-soft);border:1px solid rgba(255,210,63,0.3)">🔇 音效：关</button>
+        <button class="modal-close" id="exportBtn" style="margin-top:8px;background:rgba(255,210,63,0.15);color:var(--gold-soft);border:1px solid rgba(255,210,63,0.3)">⬆️ 导出存档</button>
+        <button class="modal-close" id="importBtn" style="margin-top:8px;background:rgba(255,210,63,0.15);color:var(--gold-soft);border:1px solid rgba(255,210,63,0.3)">⬇️ 导入存档</button>
+        <button class="modal-close" id="endRunBtn" style="margin-top:8px;background:rgba(41,182,246,0.15);color:var(--bear-blue-soft);border:1px solid rgba(41,182,246,0.3)">🏁 结束本局（看排行榜）</button>
+        <button class="modal-close" id="resetBtn" style="margin-top:8px;background:rgba(239,83,80,0.2);color:var(--danger);border:1px solid rgba(239,83,80,0.3)">重置存档（慎用）</button>
+        <textarea id="saveData" rows="3" placeholder="点「导出存档」生成文本后复制保存；导入时粘贴文本再点「导入存档」" style="width:100%;margin-top:8px;background:rgba(0,0,0,0.3);color:var(--text-main);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:8px;font-size:13px;resize:none;"></textarea>
+      </section>
+
+    </div>
+  </div>
+</div>
+
+<!-- 新手引导弹窗 -->
+<div class="modal-overlay" id="tutorialModal">
+  <div class="modal-box" style="text-align:center; max-width:360px;">
+    <div class="modal-title" id="tutTitle">🐂 新手指引</div>
+    <div class="modal-body" id="tutBody" style="font-size:16px; line-height:1.7;"></div>
+    <div style="margin-top:12px;color:var(--text-faint);font-size:13px;" id="tutStep"></div>
+    <button class="modal-close" id="tutNextBtn" style="background:linear-gradient(135deg,var(--bull-red),#cc1818);color:#fff;border:none;">下一步</button>
+    <button class="modal-close" id="tutSkipBtn" style="margin-top:8px;background:rgba(255,255,255,0.08);color:var(--text-dim);border:1px solid rgba(255,255,255,0.1);">跳过引导</button>
+  </div>
+</div>
+
+<!-- 养牛说明弹窗 -->
+<div class="modal-overlay" id="cattleModal">
+  <div class="modal-box" style="max-width:380px;">
+    <div class="modal-title">🐂 养牛说明</div>
+    <div class="modal-body">
+      <p>点左上角这只牛，就能 <b>直接 +1 头牛</b>：</p>
+      <ul style="margin:4px 0 10px 18px;font-size:15px;">
+        <li>🐄 每头牛<b>每秒自动产出牛运值</b>，牛越多产出越快</li>
+        <li>💰 养牛花费随牛数<b>递增</b>（第 1 头 50🪙，越多越贵）</li>
+        <li>✨ 牛运值满 100 可去<b>许愿池</b>许愿，牛市收益翻倍</li>
+      </ul>
+      <p style="color:var(--text-faint);font-size:13px;">点击即 +1，想多养就多点几下～</p>
+    </div>
+    <button class="modal-close" id="cattleModalOk" style="background:linear-gradient(135deg,var(--bull-red),#cc1818);color:#fff;border:none;">知道啦，开始养牛 🐄</button>
+  </div>
+</div>
+
+<!-- 杠杆说明弹窗 -->
+<div class="modal-overlay" id="leverageModal">
+  <div class="modal-box" style="max-width:540px;">
+    <div class="modal-title">⚖️ 杠杆怎么玩？</div>
+    <div class="modal-body">
+      <p>杠杆 = 借平台的钱放大仓位。<b>自有 1 万元</b>，选 <b>L 倍杠杆</b>就能操作 <b>L 万元</b>总资金（其中借了 L−1 万元）。涨赚双份，跌也亏双份——<b>波动越大越危险</b>。</p>
+      <p style="color:var(--gold-soft)">本游戏规则：每个行情周期，只要该股票单周期涨跌幅度达到「实操强平线」，平台就<b>提前强制清仓</b>这只股票（不论牛熊、不论涨跌）。</p>
+      <table class="lev-table">
+        <colgroup>
+          <col style="width:11%"><col style="width:16%"><col style="width:15%"><col style="width:16%"><col style="width:16%"><col style="width:26%">
+        </colgroup>
+        <thead>
+          <tr><th>杠杆</th><th>总资金</th><th>借入</th><th>理论爆仓跌幅</th><th>实操强平线</th><th>通俗解读</th></tr>
+        </thead>
+        <tbody id="levTableBody"></tbody>
+      </table>
+      <p style="color:var(--text-faint);font-size:13px;margin-top:8px;">理论爆仓跌幅＝本金亏光的点位（腰斩才归零＝最稳）；实操强平线是平台一般提前平仓的位置——<b>高杠杆一个跌停就可能清零</b>。</p>
+    </div>
+    <button class="modal-close" id="leverageModalOk" style="background:linear-gradient(135deg,var(--bull-red),#cc1818);color:#fff;border:none;">明白了</button>
+  </div>
+</div>
+
+<!-- 牛币饼图 → 历史走势弹窗 -->
+<div class="modal-overlay" id="coinsHistoryModal">
+  <div class="modal-box" style="max-width:440px;">
+    <div class="modal-title">📈 牛币走势 + 本局流水</div>
+    <div class="modal-body">
+      <div id="coinsHistChart"></div>
+      <div id="coinsHistStats" class="hist-stats"></div>
+      <div class="lb-title" style="margin-top:14px;">🧾 本局流水明细</div>
+      <div class="ledger open" style="margin:4px 0 0;">
+        <div class="ledger-body" id="histLedgerBody" style="max-height:220px;"></div>
+      </div>
+    </div>
+    <button class="modal-close" id="coinsHistoryOk" style="background:linear-gradient(135deg,var(--bull-red),#cc1818);color:#fff;border:none;">关闭</button>
+  </div>
+</div>
+
+<!-- 首次进入引导弹窗（点击头部「⏱ 时间」触发，仅首次） -->
+<div class="modal-overlay" id="runStartModal">
+  <div class="modal-box" style="max-width:440px;">
+    <div class="modal-title">🐂 欢迎来到《牛来运转》</div>
+    <div class="modal-body">
+      <p>这是一局 <b>10 分钟</b>的模拟炒股对局：用 <b>牛币</b> 在牛股 / 龙头 / ETF / 熊股之间低买高卖，比谁的净值涨得最多。</p>
+      <p style="color:var(--gold-soft)">🖱️ 头部「⏱ 时间」随时可点：<b>进行中 → 暂停</b>、<b>暂停 → 继续</b>、<b>结束 → 重开</b>，一指搞定，不用翻设置页。</p>
+      <p>📈 点「牛币」饼图看净值走势 + <b>本局流水明细</b>，🐂 点左上角牛 +1 头，⚖️ 杠杆越高越刺激也越危险。</p>
+    </div>
+    <button class="modal-close" id="runStartModalOk" style="background:linear-gradient(135deg,var(--bull-red),#cc1818);color:#fff;border:none;">🔄 重复开始</button>
+  </div>
+</div>
+
+<!-- 结算页 / 排行榜 -->
+<div class="modal-overlay result-modal" id="resultModal">
+  <div class="modal-box">
+    <div class="modal-title">🏁 本局结算</div>
+    <div class="result-rank" id="resultRank"></div>
+    <div class="result-score" id="resultScore">0</div>
+    <div class="result-reason" id="resultReason"></div>
+
+    <!-- 阶段一：本局流水回顾（结算后先看这局到底经历了什么） -->
+    <div id="resultStageLog">
+      <div id="resultLogStats" class="hist-stats"></div>
+      <div class="lb-title">🧾 本局流水明细</div>
+      <div class="ledger open" style="margin:4px 0 0;">
+        <div class="ledger-body" id="resultLedgerBody" style="max-height:250px;"></div>
+      </div>
+      <button class="modal-close" id="resultLogCloseBtn">关闭流水，去改昵称冲榜 →</button>
+    </div>
+
+    <!-- 阶段二：昵称编辑 + 排行榜 -->
+    <div id="resultStageBoard" style="display:none;">
+      <div class="nick-row" style="display:flex;align-items:center;gap:8px;justify-content:center;margin:8px 0 2px;">
+        <span style="font-size:14px;color:var(--text-dim);">本局昵称：</span>
+        <input id="nickInput" maxlength="12" placeholder="输入昵称"
+          style="flex:1;max-width:170px;padding:6px 8px;border-radius:8px;border:1px solid rgba(255,210,63,0.4);background:rgba(0,0,0,0.3);color:var(--text-main);font-size:14px;" />
+        <button id="nickSaveBtn" style="padding:6px 12px;border-radius:8px;border:1px solid rgba(255,210,63,0.4);background:rgba(255,210,63,0.15);color:var(--gold-soft);font-size:14px;cursor:pointer;">保存</button>
+      </div>
+      <div class="lb-title" id="lbTitle">🏆 牛人排行榜（本机）</div>
+      <ul class="lb-list" id="lbList"></ul>
+      <button id="lbMoreBtn" style="display:none;margin:8px auto 0;padding:6px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.06);color:var(--text-dim);font-size:13px;cursor:pointer;">查看跟多 ↓</button>
+      <button class="modal-close" id="againBtn" style="background:linear-gradient(135deg,var(--bull-red),#cc1818);color:#fff;border:none;">再来一局 🚀</button>
+      <button id="resultBackLogBtn" style="margin:8px auto 0;display:block;padding:6px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.06);color:var(--text-dim);font-size:13px;cursor:pointer;">← 再看本局流水</button>
+    </div>
+  </div>
+</div>
+
+<!-- 真·ES Modules：niulai.js 内部 import config.js / data.js，必须经 http 服务器访问（如 php -S），file:// 直接打开会被 CORS 拦截 -->
+<script type="module" src="niulai.js"></script>
+</body>
+</html>
