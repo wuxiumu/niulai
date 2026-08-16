@@ -2,16 +2,61 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>牛来运转 · 放置养牛 · 股市模拟</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&display=swap" rel="stylesheet">
-<link rel="manifest" href="manifest.json">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<title>牛来运转 - 在线玩｜放置养牛股市模拟小游戏</title>
+<meta name="description" content="牛来运转：限时搏杀型股市模拟休闲游戏。养牛攒运值、杠杆炒股、机会窗口、冲排行榜，支持好友 PK 与战绩分享。免费在线玩。">
+<meta name="keywords" content="牛来运转,股市模拟游戏,放置养牛,杠杆炒股,在线小游戏,排行榜,好友PK,牛市游戏">
+<meta name="author" content="牛来运转">
+<meta name="robots" content="index,follow">
+<meta name="renderer" content="webkit">
+<meta name="force-rendering" content="webkit">
+<meta name="format-detection" content="telephone=no,email=no,address=no">
+<meta name="geo.region" content="CN">
+<meta name="geo.placename" content="China">
+<meta name="language" content="zh-CN">
+<meta http-equiv="content-language" content="zh-CN">
+<meta name="applicable-device" content="pc,mobile">
+<meta name="mobile-agent" content="format=html5; url=/niulai-game.html">
+<link rel="canonical" href="/niulai-game.html">
+<link rel="alternate" hreflang="zh-CN" href="/niulai-game.html">
+<link rel="icon" href="/static/img/favicon-32.png" type="image/png" sizes="32x32">
+<link rel="icon" href="/static/img/logo.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/img/apple-touch-icon.png" sizes="180x180">
+<link rel="manifest" href="/static/manifest.json">
 <meta name="theme-color" content="#ff2d2d">
-<link rel="stylesheet" href="niulai.css">
+<meta name="application-name" content="牛来运转">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="牛来运转">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="牛来运转">
+<meta property="og:title" content="牛来运转 - 放置养牛股市模拟小游戏">
+<meta property="og:description" content="限时搏杀型股市模拟：养牛、杠杆、机会窗口、冲榜与好友 PK。免费在线玩。">
+<meta property="og:url" content="/niulai-game.html">
+<meta property="og:image" content="/static/img/logo-512.png">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="牛来运转">
+<meta name="twitter:description" content="放置养牛 · 股市模拟休闲小游戏">
+<meta name="twitter:image" content="/static/img/logo-512.png">
+<link rel="stylesheet" href="/static/css/niulai.css">
+<script src="/static/vendor/qrcode.min.js"></script>
 <script charset="UTF-8" id="LA_COLLECT" src="//sdk.51.la/js-sdk-pro.min.js"></script>
 <script>LA.init({id:"KXTq9VxXLOiPWWb5",ck:"KXTq9VxXLOiPWWb5"})</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "牛来运转",
+  "url": "/niulai-game.html",
+  "applicationCategory": "GameApplication",
+  "operatingSystem": "Web Browser",
+  "inLanguage": "zh-CN",
+  "description": "限时搏杀型股市模拟休闲游戏：养牛攒运值、杠杆炒股、机会窗口、排行榜与好友 PK。",
+  "image": "/static/img/logo-512.png",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "CNY" }
+}
+</script>
 </head>
 <body>
 
@@ -28,6 +73,12 @@
   <button class="settings-btn" id="settingsBtn" aria-label="设置">⚙</button>
 </div>
 <div class="cycle-bar-wrap"><div class="cycle-bar-fill" id="cycleBar"></div></div>
+
+<!-- M05：进行中的应战提示条（URL ?pk= 进入时） -->
+<div class="pk-challenge-bar" id="pkChallengeBar" style="display:none;" role="status">
+  <div class="pk-challenge-text" id="pkChallengeText">⚔️ 正在应战…</div>
+  <button type="button" class="pk-challenge-dismiss" id="pkChallengeDismiss" title="取消应战">✕</button>
+</div>
 
 <!-- Toast 容器 -->
 <div class="toast-container" id="toastContainer"></div>
@@ -50,7 +101,10 @@
 <main class="game-main">
   <!-- 主视觉：大盘 K 线图（替代牛形角色） -->
   <section class="bull-stage">
-    <div class="bull-title">牛来运转</div>
+    <div class="bull-brand">
+      <img src="/static/img/logo-192.png" width="40" height="40" alt="牛来运转">
+      <div class="bull-title">牛来运转</div>
+    </div>
     <div class="bull-subtitle">股市模拟 · 牛熊K线 · 牛运亨通</div>
     <div class="kline-wrap" id="klineWrap" role="button" aria-label="点击抓取行情获取牛运值">
       <canvas id="klineChart" class="kline-chart"></canvas>
@@ -290,16 +344,80 @@
           style="flex:1;max-width:170px;padding:6px 8px;border-radius:8px;border:1px solid rgba(255,210,63,0.4);background:rgba(0,0,0,0.3);color:var(--text-main);font-size:14px;" />
         <button id="nickSaveBtn" style="padding:6px 12px;border-radius:8px;border:1px solid rgba(255,210,63,0.4);background:rgba(255,210,63,0.15);color:var(--gold-soft);font-size:14px;cursor:pointer;">保存</button>
       </div>
-      <div class="lb-title" id="lbTitle">🏆 牛人排行榜（本机）</div>
+      <div class="lb-title" id="lbTitle">🏆 牛人排行榜</div>
+      <div class="lb-source" id="lbSource">正在同步排行榜…</div>
       <ul class="lb-list" id="lbList"></ul>
-      <button id="lbMoreBtn" style="display:none;margin:8px auto 0;padding:6px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.06);color:var(--text-dim);font-size:13px;cursor:pointer;">查看跟多 ↓</button>
+      <button id="lbMoreBtn" style="display:none;margin:8px auto 0;padding:6px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.06);color:var(--text-dim);font-size:13px;cursor:pointer;">查看更多 ↓</button>
+
+      <!-- M04：本局分享 -->
+      <div class="share-box" id="shareBox">
+        <div class="share-title">📤 分享本局战绩</div>
+        <div class="share-row">
+          <button type="button" class="share-btn" id="shareSystemBtn">系统分享</button>
+          <button type="button" class="share-btn" id="shareQrBtn">二维码</button>
+          <button type="button" class="share-btn" id="sharePosterBtn">生成海报</button>
+          <button type="button" class="share-btn primary" id="shareCopyBtn">复制链接</button>
+        </div>
+        <div class="share-hint" id="shareHint">链接指向牛人榜，好友打开就能查看排名</div>
+      </div>
+
+      <!-- M05：发起好友 PK -->
+      <div class="share-box pk-box" id="pkCreateBox">
+        <div class="share-title">⚔️ 发起好友 PK</div>
+        <div class="share-row">
+          <button type="button" class="share-btn primary" id="pkCreateBtn">生成 PK 邀请</button>
+          <button type="button" class="share-btn" id="pkCopyBtn" style="display:none;">复制邀请链接</button>
+          <button type="button" class="share-btn" id="pkShowQrBtn" style="display:none;">邀请二维码</button>
+        </div>
+        <div class="pk-code" id="pkCreateCode" style="display:none;">------</div>
+        <div class="share-hint" id="pkCreateHint">用本局成绩发起挑战 · 好友打开链接后开一局应战</div>
+      </div>
+
+      <!-- M05：应战结果（accept 后显示） -->
+      <div class="pk-result" id="pkResultBox" style="display:none;">
+        <div class="share-title" id="pkResultTitle">⚔️ PK 结果</div>
+        <div class="pk-vs" id="pkResultVs"></div>
+        <div class="share-hint" id="pkResultHint"></div>
+        <a class="share-btn primary" id="pkResultLink" href="pk-result.html" style="display:block;text-align:center;text-decoration:none;margin-top:8px;">打开挑战结果页</a>
+      </div>
+
       <button class="modal-close" id="againBtn" style="background:linear-gradient(135deg,var(--bull-red),#cc1818);color:#fff;border:none;">再来一局 🚀</button>
       <button id="resultBackLogBtn" style="margin:8px auto 0;display:block;padding:6px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.06);color:var(--text-dim);font-size:13px;cursor:pointer;">← 再看本局流水</button>
     </div>
   </div>
 </div>
 
-<!-- 真·ES Modules：niulai.js 内部 import config.js / data.js，必须经 http 服务器访问（如 php -S），file:// 直接打开会被 CORS 拦截 -->
-<script type="module" src="niulai.js"></script>
+<!-- 分享 · 二维码弹窗 -->
+<div class="modal-overlay" id="shareQrModal">
+  <div class="modal-box share-modal-box">
+    <div class="modal-title">📱 扫码看榜单</div>
+    <div class="share-qr-wrap"><div id="shareQrCanvas"></div></div>
+    <div class="share-qr-cap" id="shareQrCap">打开牛人榜 · 可继续挑战</div>
+    <button class="modal-close" id="shareQrCloseBtn">关闭</button>
+  </div>
+</div>
+
+<!-- 分享 · 海报弹窗 -->
+<div class="modal-overlay" id="sharePosterModal">
+  <div class="modal-box share-modal-box">
+    <div class="modal-title">🖼️ 本局海报</div>
+    <div class="share-fmt" id="shareFmtToggle">
+      <button type="button" data-f="portrait" class="active">📱 竖版</button>
+      <button type="button" data-f="landscape">🖥 横版</button>
+    </div>
+    <div class="share-poster-wrap"><canvas id="sharePosterCanvas"></canvas></div>
+    <div class="share-row" style="margin-top:10px;">
+      <button type="button" class="share-btn" id="sharePosterCloseBtn">关闭</button>
+      <button type="button" class="share-btn primary" id="sharePosterDlBtn">下载 PNG</button>
+    </div>
+  </div>
+</div>
+
+<!-- 游戏脚本（需通过网站访问，勿直接双击打开文件） -->
+<script type="module" src="/static/js/niulai.js"></script>
+<footer class="site-footer site-footer--game">
+  <div>© 2024-2026 <a href="https://chiguashentan.com/" target="_blank" rel="noopener">吃瓜神探</a> · chiguashentan.com</div>
+  <div class="icp"><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">沪ICP备2024062770号-1</a></div>
+</footer>
 </body>
 </html>

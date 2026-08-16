@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>牛来运转 · 挑战结果</title>
+<meta name="description" content="牛来运转好友挑战结果：双方成绩对比。">
+<meta name="robots" content="noindex,follow">
+<link rel="icon" href="/static/img/favicon-32.png" type="image/png" sizes="32x32">
+<style>
+  :root{
+    --gold:#ffd23f; --red:#e23b3b; --bg:#0f1115; --card:#171a21;
+    --line:rgba(255,255,255,.08); --dim:#9aa3b2; --main:#f4f6fb;
+    --green:#51d88a; --lose:#ff8a8a;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;min-height:100vh;color:var(--main);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    background:radial-gradient(1000px 560px at 50% -8%,#241820,#0f1115 55%);
+  }
+  .wrap{max-width:560px;margin:0 auto;padding:28px 18px 64px;position:relative;z-index:2}
+  .brand{display:flex;align-items:center;gap:10px;margin-bottom:18px}
+  .brand img{width:40px;height:40px;border-radius:10px;border:1px solid rgba(255,210,63,.35)}
+  .brand h1{margin:0;font-size:18px;color:var(--gold);letter-spacing:1px}
+  .card{
+    background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px 18px 20px;
+    box-shadow:0 16px 48px rgba(0,0,0,.35);
+  }
+  .status{text-align:center;font-size:13px;color:var(--dim);margin-bottom:10px}
+  .headline{text-align:center;font-size:26px;font-weight:800;margin:0 0 6px;letter-spacing:1px}
+  .headline.win{color:var(--gold);text-shadow:0 0 24px rgba(255,210,63,.35)}
+  .headline.draw{color:var(--green)}
+  .sub{text-align:center;color:var(--dim);font-size:13px;margin:0 0 18px}
+  .vs{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:stretch;margin:8px 0 16px}
+  .side{
+    background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:12px;padding:14px 10px;text-align:center;
+  }
+  .side.winner{border-color:rgba(255,210,63,.55);background:rgba(255,210,63,.08)}
+  .side .who{font-weight:700;font-size:15px;margin-bottom:6px;word-break:break-all}
+  .side .sc{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums}
+  .side .sc.up{color:var(--gold)}
+  .side .sc.down{color:var(--lose)}
+  .side .tag{margin-top:6px;font-size:12px;color:var(--dim)}
+  .mid{align-self:center;font-weight:800;color:var(--gold);font-size:18px}
+  .meta{display:grid;gap:8px;margin-top:4px}
+  .row{display:flex;justify-content:space-between;gap:12px;font-size:13px;padding:8px 0;border-bottom:1px dashed var(--line)}
+  .row:last-child{border-bottom:none}
+  .row .k{color:var(--dim)}
+  .row .v{font-weight:600;text-align:right}
+  .actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:18px}
+  a.btn,button.btn{
+    display:inline-block;text-decoration:none;border:none;cursor:pointer;border-radius:10px;
+    padding:10px 14px;font-size:14px;font-weight:700;
+  }
+  .btn-gold{background:linear-gradient(135deg,#ffd23f,#ffb300);color:#1a1300}
+  .btn-ghost{background:rgba(255,255,255,.06);color:var(--dim);border:1px solid var(--line)}
+  .hint{margin-top:14px;text-align:center;font-size:12px;color:var(--dim);line-height:1.5}
+  .empty{padding:36px 12px;text-align:center;color:var(--dim)}
+  #fx{position:fixed;inset:0;pointer-events:none;z-index:1}
+  .site-footer{margin-top:22px;padding:8px 0;text-align:center;color:var(--dim);font-size:12px;line-height:1.7}
+  .site-footer a{color:var(--dim);text-decoration:none}
+  .site-footer a:hover{color:var(--gold)}
+</style>
+</head>
+<body>
+<canvas id="fx" aria-hidden="true"></canvas>
+<div class="wrap">
+  <div class="brand">
+    <img src="/static/img/logo-192.png" width="40" height="40" alt="">
+    <h1>牛来运转 · 挑战结果</h1>
+  </div>
+  <div class="card" id="card">
+    <div class="empty" id="loading">正在加载挑战结果…</div>
+  </div>
+  <footer class="site-footer">
+    <div>© 2024-2026 <a href="https://chiguashentan.com/" target="_blank" rel="noopener">吃瓜神探</a> · chiguashentan.com</div>
+    <div class="icp"><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">沪ICP备2024062770号-1</a></div>
+  </footer>
+</div>
+<script>
+(function () {
+  const PK_ME_KEY = 'niulai_pk_me';
+  const card = document.getElementById('card');
+  const canvas = document.getElementById('fx');
+  const ctx = canvas.getContext('2d');
+  let pieces = [];
+  let raf = 0;
+
+  function qs(name) {
+    try { return new URLSearchParams(location.search).get(name) || ''; }
+    catch (_) { return ''; }
+  }
+
+  function fmt(n) {
+    return Math.round(Number(n) || 0).toLocaleString('zh-CN');
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+  }
+
+  function fmtTime(ts) {
+    if (!ts) return '—';
+    const d = new Date(ts * 1000);
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+
+  function readPkMe() {
+    try { return JSON.parse(localStorage.getItem(PK_ME_KEY) || '{}') || {}; }
+    catch (_) { return {}; }
+  }
+
+  function markPkMe(code, runId) {
+    if (!code || !runId) return;
+    const m = readPkMe();
+    m[String(code).toUpperCase()] = String(runId);
+    try { localStorage.setItem(PK_ME_KEY, JSON.stringify(m)); } catch (_) {}
+  }
+
+  /** 本机是否为这场挑战的当事人（发起方或应战方） */
+  function isParticipant(pk) {
+    if (!pk) return false;
+    const code = String(pk.code || '').toUpperCase();
+    const meMap = readPkMe();
+    const myRun = meMap[code] || '';
+    const ids = [];
+    if (pk.challenger && pk.challenger.runId) ids.push(String(pk.challenger.runId));
+    if (pk.recipient && pk.recipient.runId) ids.push(String(pk.recipient.runId));
+    if (myRun && ids.includes(String(myRun))) return true;
+    // 回退：本机排行榜 / 存档里的 runId
+    const localIds = collectLocalRunIds();
+    return ids.some((id) => localIds.has(id));
+  }
+
+  function collectLocalRunIds() {
+    const set = new Set();
+    try {
+      const raw = localStorage.getItem('niulai_save_bak') || localStorage.getItem('niulai_save');
+      if (raw) {
+        const s = JSON.parse(raw);
+        if (s.runId) set.add(String(s.runId));
+        if (s._runId) set.add(String(s._runId));
+        if (s.id) set.add(String(s.id));
+      }
+    } catch (_) {}
+    try {
+      const lb = JSON.parse(localStorage.getItem('niulai_leaderboard') || '[]');
+      if (Array.isArray(lb)) lb.forEach((e) => { if (e && e.id) set.add(String(e.id)); });
+    } catch (_) {}
+    return set;
+  }
+
+  function resize() {
+    canvas.width = window.innerWidth * devicePixelRatio;
+    canvas.height = window.innerHeight * devicePixelRatio;
+    canvas.style.width = window.innerWidth + 'px';
+    canvas.style.height = window.innerHeight + 'px';
+    ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  }
+
+  function spawnConfetti(burst) {
+    const colors = ['#ffd23f', '#ff6b6b', '#51d88a', '#5a9bff', '#ff9f43', '#fff'];
+    const n = burst ? 140 : 90;
+    for (let i = 0; i < n; i++) {
+      pieces.push({
+        x: Math.random() * window.innerWidth,
+        y: -20 - Math.random() * window.innerHeight * 0.35,
+        w: 6 + Math.random() * 6,
+        h: 8 + Math.random() * 10,
+        vx: -3 + Math.random() * 6,
+        vy: 2 + Math.random() * 4,
+        rot: Math.random() * Math.PI,
+        vr: -0.2 + Math.random() * 0.4,
+        color: colors[(Math.random() * colors.length) | 0],
+        life: 180 + ((Math.random() * 80) | 0),
+      });
+    }
+  }
+
+  function tick() {
+    ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+    pieces = pieces.filter((p) => p.life > 0);
+    for (const p of pieces) {
+      p.life--;
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += 0.045;
+      p.rot += p.vr;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.globalAlpha = Math.max(0, Math.min(1, p.life / 40));
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      ctx.restore();
+    }
+    if (pieces.length) raf = requestAnimationFrame(tick);
+    else raf = 0;
+  }
+
+  function playConfetti() {
+    resize();
+    spawnConfetti(true);
+    setTimeout(() => spawnConfetti(false), 280);
+    setTimeout(() => spawnConfetti(false), 700);
+    if (!raf) raf = requestAnimationFrame(tick);
+  }
+
+  function render(pk, participant) {
+    const ch = pk.challenger || {};
+    const rc = pk.recipient || {};
+    const status = pk.status || 'pending';
+
+    if (status === 'pending') {
+      card.innerHTML = `
+        <div class="status">挑战码 ${esc(pk.code)}</div>
+        <h2 class="headline">等待应战</h2>
+        <p class="sub">好友玩完一局后，这里会显示双方成绩对比。</p>
+        <div class="vs">
+          <div class="side winner">
+            <div class="who">${esc(ch.name || '发起方')}</div>
+            <div class="sc up">${fmt(ch.score)}</div>
+            <div class="tag">发起方</div>
+          </div>
+          <div class="mid">VS</div>
+          <div class="side">
+            <div class="who">？</div>
+            <div class="sc">—</div>
+            <div class="tag">应战方</div>
+          </div>
+        </div>
+        <div class="actions">
+          <a class="btn btn-gold" href="niulai-game.html?pk=${encodeURIComponent(pk.code)}">去应战</a>
+          <a class="btn btn-ghost" href="leaderboard.html">牛人榜</a>
+        </div>`;
+      return;
+    }
+
+    if (status === 'expired') {
+      card.innerHTML = `<div class="empty">这场挑战已过期（${esc(pk.code)}）</div>
+        <div class="actions"><a class="btn btn-ghost" href="niulai-game.html">回游戏</a></div>`;
+      return;
+    }
+
+    if (status !== 'accepted' || !rc) {
+      card.innerHTML = `<div class="empty">暂无对战结果</div>`;
+      return;
+    }
+
+    const winner = pk.winner || (
+      rc.score > ch.score ? 'recipient' : (ch.score > rc.score ? 'challenger' : 'draw')
+    );
+    const headline = winner === 'draw'
+      ? '平局！'
+      : (winner === 'challenger'
+        ? `${ch.name || '发起方'} 获胜`
+        : `${rc.name || '应战方'} 获胜`);
+    const headClass = winner === 'draw' ? 'draw' : 'win';
+    const viewerHint = participant
+      ? '你是本场当事人 · 每次打开都会撒花庆祝'
+      : '访客视角 · 仅展示双方成绩对比';
+
+    card.innerHTML = `
+      <div class="status">挑战码 ${esc(pk.code)} · ${participant ? '当事人' : '访客'}</div>
+      <h2 class="headline ${headClass}">${esc(headline)}</h2>
+      <p class="sub">${winner === 'draw' ? '双方净值不相上下' : '看准成绩，再开一局也可以'}</p>
+      <div class="vs">
+        <div class="side ${winner === 'challenger' || winner === 'draw' ? 'winner' : ''}">
+          <div class="who">${esc(ch.name || '发起方')}</div>
+          <div class="sc ${winner === 'recipient' ? 'down' : 'up'}">${fmt(ch.score)}</div>
+          <div class="tag">发起方</div>
+        </div>
+        <div class="mid">VS</div>
+        <div class="side ${winner === 'recipient' || winner === 'draw' ? 'winner' : ''}">
+          <div class="who">${esc(rc.name || '应战方')}</div>
+          <div class="sc ${winner === 'challenger' ? 'down' : 'up'}">${fmt(rc.score)}</div>
+          <div class="tag">应战方</div>
+        </div>
+      </div>
+      <div class="meta">
+        <div class="row"><span class="k">发起方净值</span><span class="v">${fmt(ch.score)} 🪙</span></div>
+        <div class="row"><span class="k">应战方净值</span><span class="v">${fmt(rc.score)} 🪙</span></div>
+        <div class="row"><span class="k">分差</span><span class="v">${fmt(Math.abs((rc.score || 0) - (ch.score || 0)))} 🪙</span></div>
+        <div class="row"><span class="k">发起时间</span><span class="v">${esc(fmtTime(pk.createdAt))}</span></div>
+        <div class="row"><span class="k">应战完成</span><span class="v">${esc(fmtTime(pk.acceptedAt))}</span></div>
+        ${pk.challenge ? `<div class="row"><span class="k">挑战语</span><span class="v">${esc(pk.challenge)}</span></div>` : ''}
+      </div>
+      <div class="actions">
+        <a class="btn btn-gold" href="niulai-game.html">再玩一局</a>
+        <a class="btn btn-ghost" href="leaderboard.html">牛人榜</a>
+        <button class="btn btn-ghost" type="button" id="copyBtn">复制结果链接</button>
+      </div>
+      <div class="hint">${esc(viewerHint)}</div>`;
+
+    const copyBtn = document.getElementById('copyBtn');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(location.href);
+          copyBtn.textContent = '已复制';
+          setTimeout(() => { copyBtn.textContent = '复制结果链接'; }, 1200);
+        } catch (_) {
+          prompt('复制链接：', location.href);
+        }
+      });
+    }
+
+    // 仅当事人：每次打开都撒礼花
+    if (participant) playConfetti();
+  }
+
+  async function main() {
+    const code = (qs('pk') || '').toUpperCase().trim();
+    if (!/^[A-Z0-9]{6,12}$/.test(code)) {
+      card.innerHTML = `<div class="empty">缺少有效的挑战码</div>
+        <div class="actions"><a class="btn btn-ghost" href="leaderboard.html">去牛人榜</a></div>`;
+      return;
+    }
+    // URL 可带 me=runId（本机当事人标记，便于跨设备分享给自己时也能识别）
+    const me = qs('me');
+    if (me) markPkMe(code, me);
+
+    try {
+      const r = await fetch('api/pk.php?api=1&action=resolve&code=' + encodeURIComponent(code), { cache: 'no-store' });
+      const j = await r.json();
+      if (!j || !j.ok || !j.pk) {
+        card.innerHTML = `<div class="empty">${esc((j && j.error) || '加载失败')}</div>`;
+        return;
+      }
+      const pk = j.pk;
+      const participant = isParticipant(pk);
+      render(pk, participant);
+    } catch (e) {
+      card.innerHTML = `<div class="empty">暂时连不上，请稍后再试</div>`;
+    }
+  }
+
+  window.addEventListener('resize', () => { if (pieces.length) resize(); });
+  main();
+})();
+</script>
+</body>
+</html>

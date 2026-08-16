@@ -18,3 +18,7 @@ npm-debug.log*
 # Environment
 .env
 .env.local
+
+# Runtime DB（分享/PK 运行时数据，勿提交）
+api/share.sqlite
+api/share.sqlite-*

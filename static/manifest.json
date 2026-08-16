@@ -1,0 +1,40 @@
+{
+  "name": "牛来运转",
+  "short_name": "牛来运转",
+  "description": "放置养牛 · 股市模拟休闲小游戏。限时搏杀、杠杆、机会窗口、排行榜与好友 PK。",
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "start_url": "/niulai-game.html",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#1a0608",
+  "theme_color": "#ff2d2d",
+  "categories": ["games", "entertainment"],
+  "icons": [
+    {
+      "src": "/static/img/logo-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/img/logo-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/img/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/img/logo-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

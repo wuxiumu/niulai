@@ -22,14 +22,45 @@ header('Content-Type: application/json; charset=utf-8');
 $method = $_SERVER['REQUEST_METHOD'];
 $action = strtolower(trim(strval($_GET['action'] ?? '')));
 
+/**
+ * 分享限流：按 IP、本局 run_id 分别检查「小时 / 天」上限。
+ * 返回 null 表示通过；否则返回 'hour' | 'day'。
+ */
+function niulai_share_rate_hit(PDO $db, string $ip, string $runId): ?string {
+    $now  = time();
+    $hour = $now - 3600;
+    $day  = $now - 86400;
+    $limH = max(1, (int)NIULAI_SHARE_LIMIT_HOUR);
+    $limD = max($limH, (int)NIULAI_SHARE_LIMIT_DAY);
+
+    $checks = [];
+    if ($ip !== '') {
+        $checks[] = ['ip_hint = ?', $ip];
+    }
+    if ($runId !== '') {
+        $checks[] = ['run_id = ?', $runId];
+    }
+    if (!$checks) return null;
+
+    foreach ($checks as [$where, $val]) {
+        $st = $db->prepare("SELECT COUNT(*) FROM share_records WHERE $where AND created_at >= ?");
+        $st->execute([$val, $hour]);
+        if ((int)$st->fetchColumn() >= $limH) return 'hour';
+        $st = $db->prepare("SELECT COUNT(*) FROM share_records WHERE $where AND created_at >= ?");
+        $st->execute([$val, $day]);
+        if ((int)$st->fetchColumn() >= $limD) return 'day';
+    }
+    return null;
+}
+
 $db = niulai_db();
 
 if ($method === 'POST' && $action === '') {
     $body = json_decode(file_get_contents('php://input'), true);
-    if (!is_array($body)) niulai_json(['ok' => false, 'error' => '无效 JSON'], 400);
+    if (!is_array($body)) niulai_json(['ok' => false, 'error' => '请求格式不对'], 400);
 
     $runId = trim(strval($body['run_id'] ?? ''));
-    if ($runId === '') niulai_json(['ok' => false, 'error' => '缺少 run_id'], 400);
+    if ($runId === '') niulai_json(['ok' => false, 'error' => '缺少本局信息'], 400);
 
     $channel = trim(strval($body['channel'] ?? 'other'));
     if (!in_array($channel, ['system', 'qrcode', 'poster', 'link', 'copy', 'other'], true)) {
@@ -41,6 +72,24 @@ if ($method === 'POST' && $action === '') {
     $note      = trim(strval($body['note'] ?? ''));
     $score     = isset($body['score']) ? floatval($body['score']) : 0;
     $ipHint    = substr(trim(strval($_SERVER['REMOTE_ADDR'] ?? '')), 0, 64);
+
+    $hit = niulai_share_rate_hit($db, $ipHint, $runId);
+    if ($hit === 'hour') {
+        niulai_json([
+            'ok' => false,
+            'error' => '分享太频繁，请一小时后再试',
+            'rateLimited' => true,
+            'limit' => 'hour',
+        ], 429);
+    }
+    if ($hit === 'day') {
+        niulai_json([
+            'ok' => false,
+            'error' => '今日分享次数已用完，明天再来吧',
+            'rateLimited' => true,
+            'limit' => 'day',
+        ], 429);
+    }
 
     $stmt = $db->prepare("INSERT INTO share_records
         (run_id, score, channel, poster_format, recipient_hint, note, ip_hint, created_at)

@@ -10,21 +10,23 @@
  * 设计原则：
  *   1) 不自动跳转到游戏，避免「想分享落地的链接却直接进了游戏」
  *   2) 入口颜色与排行榜色系保持一致（金 + 红）
+ *   3) Redis / SQLite 失败时页面仍可访问，预览区降级提示（不阻塞导览）
  */
-header("Location: /niulai-game.html", true, 302);
-exit;
-
 require_once __DIR__ . '/api/config.php';
 require_once __DIR__ . '/api/db.php';
 niulai_cors();
 
 // 简易数据预览（仅用于首页展示；失败不阻塞）
-$rankPreview = ['top3' => [], 'total' => 0];
-$shareStat   = ['byChannel' => []];
+$rankPreview = ['top3' => [], 'total' => 0, 'ok' => false];
+$shareStat   = ['byChannel' => [], 'total' => 0, 'pkTotal' => 0, 'ok' => false];
+$redisOk     = false;
+$sqliteOk    = false;
+
 try {
     $r = niulai_redis();
     if ($r !== null) {
-        // 触发 lazy seed
+        $redisOk = true;
+        // 触发 lazy seed（与 api/rank.php 一致的空榜示例，便于本地预览）
         $sentinel = 'niulai:seed:done';
         if (!$r->exists($sentinel) && (int)$r->zCard(NIULAI_ZSET) === 0) {
             $now = time();
@@ -40,6 +42,7 @@ try {
             }
             $r->set($sentinel, '1');
         }
+        $rankPreview['ok'] = true;
         $rankPreview['total'] = (int)$r->zCard(NIULAI_ZSET);
         $topIds = $r->zRevRange(NIULAI_ZSET, 0, 2);
         if (is_array($topIds)) {
@@ -54,24 +57,32 @@ try {
             }
         }
     }
-} catch (Exception $e) { /* 安静 */ }
+} catch (Exception $e) { /* 安静降级 */ }
 
 try {
     $sd = niulai_db();
+    $sqliteOk = true;
     $by = $sd->query("SELECT channel, COUNT(*) AS n FROM share_records GROUP BY channel")->fetchAll(PDO::FETCH_ASSOC);
     foreach ($by as $b) { $shareStat['byChannel'][$b['channel']] = (int)$b['n']; }
     $shareStat['total'] = (int)$sd->query("SELECT COUNT(*) FROM share_records")->fetchColumn();
     $shareStat['pkTotal'] = (int)$sd->query("SELECT COUNT(*) FROM pk_invites")->fetchColumn();
-} catch (Exception $e) { /* 安静 */ }
+    $shareStat['ok'] = true;
+} catch (Exception $e) { /* 安静降级 */ }
 
 function fmt_num($n) { return number_format(intval($n), 0, '.', ','); }
+
+$seo = [
+    'title' => '牛来运转 - 官方站｜放置养牛股市模拟小游戏',
+    'description' => '牛来运转官方网站：限时搏杀型股市模拟休闲游戏。养牛攒运值、杠杆炒股、机会窗口、冲排行榜，支持好友 PK 与战绩分享。立即开玩。',
+    'keywords' => '牛来运转,牛来运转官网,股市模拟,放置游戏,养牛游戏,杠杆炒股,排行榜,好友PK,在线小游戏',
+    'path' => '/',
+    'type' => 'website',
+];
 ?>
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>牛来运转 · 主页</title>
+<?php require __DIR__ . '/includes/seo.php'; ?>
 <style>
   :root{
     --gold:#ffd23f; --red:#e23b3b; --bg:#0f1115; --card:#171a21; --line:rgba(255,255,255,.08);
@@ -82,7 +93,8 @@ function fmt_num($n) { return number_format(intval($n), 0, '.', ','); }
     color:var(--main);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;min-height:100vh}
   .wrap{max-width:720px;margin:0 auto;padding:36px 18px 80px}
   .top{text-align:center;margin-bottom:32px}
-  .top .logo{font-size:64px;line-height:1;margin-bottom:10px}
+  .top .logo{width:88px;height:88px;margin:0 auto 12px;border-radius:22px;overflow:hidden;box-shadow:0 8px 32px rgba(255,45,45,.35);border:1px solid rgba(255,210,63,.35)}
+  .top .logo img{width:100%;height:100%;display:block;object-fit:cover}
   .top h1{margin:0;font-size:30px;letter-spacing:2px;color:var(--gold);text-shadow:0 0 24px rgba(255,210,63,0.35)}
   .top .slogan{margin-top:6px;color:var(--dim);font-size:14px;letter-spacing:1px}
   .cards{display:grid;gap:14px;margin-top:20px}
@@ -111,6 +123,8 @@ function fmt_num($n) { return number_format(intval($n), 0, '.', ','); }
   .preview .top3 .rank{color:var(--gold);width:24px;font-weight:800}
   .pill{display:inline-block;padding:2px 8px;margin-right:4px;border-radius:6px;background:rgba(255,255,255,.06);border:1px solid var(--line);font-size:12px;color:var(--dim)}
   .pill b{color:var(--main);font-weight:700}
+  .hint{margin:8px 0 0;padding:10px 12px;border-radius:10px;background:rgba(255,138,61,.12);border:1px solid rgba(255,138,61,.35);color:#ffb074;font-size:13px;line-height:1.5}
+  .hint.ok{background:rgba(81,216,138,.08);border-color:rgba(81,216,138,.3);color:var(--green)}
 
   .stack{margin-top:24px;text-align:center;color:var(--dim);font-size:12px}
   .stack code{background:rgba(255,255,255,.06);padding:1px 6px;border-radius:4px}
@@ -121,7 +135,7 @@ function fmt_num($n) { return number_format(intval($n), 0, '.', ','); }
 <div class="wrap">
 
   <div class="top">
-    <div class="logo">🐂</div>
+    <div class="logo"><img src="/static/img/logo-512.png" width="88" height="88" alt="牛来运转 Logo"></div>
     <h1>牛来运转</h1>
     <div class="slogan">股市模拟 · 牛熊 K 线 · 牛运亨通</div>
   </div>
@@ -142,17 +156,17 @@ function fmt_num($n) { return number_format(intval($n), 0, '.', ','); }
         <div class="emo">🏆</div>
         <div class="ct">
           <h3>牛人榜 · 分享</h3>
-          <p>看榜 · 生成 PK 邀请 · 海报 / 二维码分享</p>
+          <p>看榜 · 生成挑战邀请 · 海报 / 二维码分享</p>
         </div>
       </div>
       <div class="arrow">›</div>
     </a>
-    <a class="card" href="api/admin.php">
+    <a class="card" href="admin/">
       <div class="left">
         <div class="emo">⚙️</div>
         <div class="ct">
-          <h3>管理后台</h3>
-          <p>排行榜 / 分享记录 / PK 邀请 三 tab 管理</p>
+          <h3>管理入口</h3>
+          <p>排行榜 · 分享记录 · 好友挑战</p>
         </div>
       </div>
       <div class="arrow">›</div>
@@ -161,7 +175,10 @@ function fmt_num($n) { return number_format(intval($n), 0, '.', ','); }
 
   <div class="preview">
     <h3>实时数据</h3>
-    <div class="row"><span class="left">Redis ZSET 排行榜条数</span><span class="right"><?= fmt_num($rankPreview['total']) ?></span></div>
+    <?php if (!$rankPreview['ok']): ?>
+    <div class="hint">总榜暂时连不上。游戏照常玩，成绩会先记在你这台设备上；恢复后刷新本页即可看到最新排名。</div>
+    <?php else: ?>
+    <div class="row"><span class="left">排行榜上榜人数</span><span class="right"><?= fmt_num($rankPreview['total']) ?></span></div>
     <?php if (!empty($rankPreview['top3'])): ?>
     <div class="top3">
       <?php foreach ($rankPreview['top3'] as $i => $t): ?>
@@ -172,36 +189,51 @@ function fmt_num($n) { return number_format(intval($n), 0, '.', ','); }
       </div>
       <?php endforeach; ?>
     </div>
+    <?php elseif ($rankPreview['total'] === 0): ?>
+    <div class="hint ok">榜单还是空的，去玩一局再回来看前三名。</div>
     <?php endif; ?>
-    <div class="row" style="margin-top:6px"><span class="left">SQLite 分享事件总数</span><span class="right"><?= fmt_num($shareStat['total']) ?></span></div>
-    <div class="row"><span class="left">SQLite PK 邀请总数</span><span class="right"><?= fmt_num($shareStat['pkTotal'] ?? 0) ?></span></div>
+    <?php endif; ?>
+
+    <?php if (!$shareStat['ok']): ?>
+    <div class="hint" style="margin-top:12px">分享与挑战统计暂时看不到，不影响游玩与导览。</div>
+    <?php else: ?>
+    <div class="row" style="margin-top:6px"><span class="left">分享次数</span><span class="right"><?= fmt_num($shareStat['total']) ?></span></div>
+    <div class="row"><span class="left">好友挑战邀请数</span><span class="right"><?= fmt_num($shareStat['pkTotal']) ?></span></div>
     <div class="row" style="border-bottom:none;padding-top:14px">
-      <span class="left">渠道分布</span>
+      <span class="left">分享方式</span>
       <span class="right" style="text-align:right">
         <?php
           $by = $shareStat['byChannel'] ?: [];
-          echo '<span class="pill">system <b>'.($by['system']??0).'</b></span>';
-          echo '<span class="pill">qrcode <b>'.($by['qrcode']??0).'</b></span>';
-          echo '<span class="pill">poster <b>'.($by['poster']??0).'</b></span>';
-          echo '<span class="pill">link <b>'.($by['link']??0).'</b></span>';
-          echo '<span class="pill">copy <b>'.($by['copy']??0).'</b></span>';
-          echo '<span class="pill">other <b>'.($by['other']??0).'</b></span>';
+          $labels = [
+            'system' => '系统分享',
+            'qrcode' => '二维码',
+            'poster' => '海报',
+            'link'   => '链接',
+            'copy'   => '复制',
+            'other'  => '其他',
+          ];
+          foreach ($labels as $k => $lab) {
+            echo '<span class="pill">'.htmlspecialchars($lab).' <b>'.($by[$k]??0).'</b></span>';
+          }
         ?>
       </span>
     </div>
+    <?php endif; ?>
   </div>
 
   <div class="stack">
-    <div>PHP <?= PHP_VERSION ?> ·
-      <code>Redis <?= function_exists('niulai_redis') ? '✓' : '—' ?></code> ·
-      <code>SQLite <?= function_exists('niulai_db') ? '✓' : '—' ?></code></div>
+    <div>
+      排行榜 <?= $redisOk ? '畅通' : '暂缓' ?> ·
+      分享记录 <?= $sqliteOk ? '畅通' : '暂缓' ?>
+    </div>
     <div style="margin-top:6px">
-      <a href="leaderboard.html">用户榜</a> ·
-      <a href="api/rank.php" target="_blank">api/rank.php</a> ·
-      <a href="api/share.php" target="_blank">api/share.php</a> ·
-      <a href="api/pk.php" target="_blank">api/pk.php</a>
+      <a href="niulai-game.html">开始游戏</a> ·
+      <a href="leaderboard.html">牛人榜</a> ·
+      <a href="admin/">管理入口</a>
     </div>
   </div>
+
+  <?php require __DIR__ . '/includes/site-footer.php'; ?>
 
 </div>
 </body>

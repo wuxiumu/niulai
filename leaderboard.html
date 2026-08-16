@@ -2,9 +2,30 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>牛来运转 · 用户榜</title>
-<script src="vendor/qrcode.min.js"></script>
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>牛人榜 - 牛来运转｜排行榜 · 分享 · 好友 PK</title>
+<meta name="description" content="牛来运转牛人排行榜：查看高手战绩、生成海报与二维码、发起好友挑战。">
+<meta name="keywords" content="牛来运转排行榜,牛人榜,好友PK,战绩分享,股市模拟游戏">
+<meta name="robots" content="index,follow">
+<meta name="geo.region" content="CN">
+<meta name="language" content="zh-CN">
+<meta http-equiv="content-language" content="zh-CN">
+<meta name="applicable-device" content="pc,mobile">
+<link rel="canonical" href="/leaderboard.html">
+<link rel="icon" href="/static/img/favicon-32.png" type="image/png" sizes="32x32">
+<link rel="icon" href="/static/img/logo.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/img/apple-touch-icon.png">
+<link rel="manifest" href="/static/manifest.json">
+<meta name="theme-color" content="#ff2d2d">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="牛来运转">
+<meta property="og:title" content="牛人榜 - 牛来运转">
+<meta property="og:description" content="查看排行榜、分享战绩、好友 PK。">
+<meta property="og:url" content="/leaderboard.html">
+<meta property="og:image" content="/static/img/logo-512.png">
+<script src="/static/vendor/qrcode.min.js"></script>
 <style>
   :root{
     --gold:#ffd23f; --red:#e23b3b; --bg:#0f1115; --card:#171a21; --line:rgba(255,255,255,.08);
@@ -99,10 +120,15 @@
 
   .home-nav{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;font-size:13px}
   .home-nav a{color:var(--gold);text-decoration:none}
+  .brand-row{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+  .brand-row img{width:40px;height:40px;border-radius:10px;display:block}
   .stat{color:var(--dim);font-size:12.5px;margin-top:8px}
 
   .foot{text-align:center;color:var(--dim);font-size:12px;margin-top:30px}
   .foot a{color:var(--gold);text-decoration:none}
+  .site-footer{margin-top:14px;padding:4px 0;text-align:center;color:var(--dim);font-size:12px;line-height:1.7}
+  .site-footer a{color:var(--dim);text-decoration:none}
+  .site-footer a:hover{color:var(--gold)}
 </style>
 </head>
 <body>
@@ -113,8 +139,8 @@
     <a href="niulai-game.html">🐂 玩游戏</a>
   </div>
 
-  <h1>🏆 牛人榜</h1>
-  <div class="sub">本机 + 服务端（Redis）排行榜 · 纯前端页面 · 数据来源 <code>api/rank.php</code></div>
+  <h1 class="brand-row"><img src="/static/img/logo-192.png" width="40" height="40" alt="牛来运转 Logo">牛人榜</h1>
+  <div class="sub">看看谁最牛 · 分享战绩 · 向好友发起挑战 · <a href="niulai-game.html">去玩游戏</a></div>
 
   <!-- PK 横幅（URL 携带 ?pk=CODE 时显示） -->
   <div class="pk-banner" id="pkBanner">
@@ -175,7 +201,11 @@
     </div>
   </div>
 
-  <div class="foot">🐂 牛来运转 · 由 Redis + SQLite 共同撑起榜单 / 分享 / 好友 PK</div>
+  <div class="foot">🐂 牛来运转 · 冲榜 · 分享 · 好友挑战</div>
+  <footer class="site-footer">
+    <div>© 2024-2026 <a href="https://chiguashentan.com/" target="_blank" rel="noopener">吃瓜神探</a> · chiguashentan.com</div>
+    <div class="icp"><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">沪ICP备2024062770号-1</a></div>
+  </footer>
 </div>
 
 <!-- ===== 弹窗：二维码 ===== -->
@@ -246,7 +276,7 @@ async function load(){
   const u = `api/rank.php?page=${page}&per=${per}&q=${encodeURIComponent(q)}`
            + (pkg.lastRunId ? `&info=1&id=${encodeURIComponent(pkg.lastRunId)}` : '');
   const j = await (await fetch(u)).json();
-  if(!j.ok){toast('加载失败：'+(j.error||''));return;}
+  if(!j.ok){toast('排行榜加载失败，请稍后再试');return;}
 
   // 领奖台 TOP3（如果当前页是第 1 且未搜索）
   const podium = $('podium');
@@ -321,13 +351,46 @@ function loadPKFromURL(){
   loadMyBest();   // 同步读 localStorage，pkg.lastScore / pkg.myName 立即可用
   fetch('api/pk.php?api=1&action=resolve&code='+encodeURIComponent(code))
     .then(r=>r.json()).then(j=>{
-      if(!j.ok){return;}
-      const c = j.pk.challenger;
-      $('pkBanner').classList.add('show');
-      $('pkChallengerName').textContent = c.name + ' 挑战你';
+      if(!j.ok){ toast('挑战邀请无效，请检查链接'); return; }
+      const pk = j.pk;
+      const c = pk.challenger || {};
+      const banner = $('pkBanner');
+      banner.classList.add('show');
+      const title = banner.querySelector('.pk-title');
+      const cta = banner.querySelector('.pk-cta');
       const cs = $('pkChallengerScore'), rs = $('pkRecipientScore');
-      cs.textContent = fmt(c.score); cs.className = 'sc'; rs.className = 'sc';
-      // 收方（你）的本地最好成绩，做赢/输对比
+      cs.className = 'sc'; rs.className = 'sc';
+
+      // 过期
+      if (pk.status === 'expired') {
+        if (title) title.textContent = '⏰ PK 邀请已过期';
+        $('pkChallengerName').textContent = (c.name || '发起方') + ' 的挑战';
+        cs.textContent = fmt(c.score);
+        $('pkRecipientName').textContent = '—';
+        rs.textContent = '已过期';
+        if (cta) cta.innerHTML = '<button class="btn-ghost" onclick="document.getElementById(\'pkBanner\').classList.remove(\'show\')">知道了</button>';
+        return;
+      }
+
+      // 已应战完毕：引导去结果页（当事人会礼花，访客只看对比）
+      if (pk.status === 'accepted' && pk.recipient) {
+        const rc = pk.recipient;
+        const winRec = (rc.score || 0) >= (c.score || 0);
+        if (title) title.textContent = winRec ? '🏆 挑战已结束 · 应战方胜' : '⚔️ 挑战已结束 · 发起方胜';
+        $('pkChallengerName').textContent = c.name || '发起方';
+        $('pkRecipientName').textContent = rc.name || '应战方';
+        cs.textContent = fmt(c.score); rs.textContent = fmt(rc.score);
+        if (winRec) { rs.classList.add('win'); cs.classList.add('lose'); }
+        else { cs.classList.add('win'); rs.classList.add('lose'); }
+        const resultHref = 'pk-result.html?pk=' + encodeURIComponent(code);
+        if (cta) cta.innerHTML = '<a class="btn-gold" href="'+resultHref+'">查看对战结果</a><button class="btn-ghost" onclick="document.getElementById(\'pkBanner\').classList.remove(\'show\')">关闭</button>';
+        return;
+      }
+
+      // pending：等待应战
+      if (title) title.textContent = '⚔️ 有人向你发出 PK 挑战';
+      $('pkChallengerName').textContent = (c.name || '对手') + ' 挑战你';
+      cs.textContent = fmt(c.score);
       const myScore = pkg.lastScore || 0;
       $('pkRecipientName').textContent = pkg.myName || '你';
       if (myScore > 0){
@@ -335,9 +398,11 @@ function loadPKFromURL(){
         if (myScore >= c.score){ rs.classList.add('win'); cs.classList.add('lose'); }
         else { rs.classList.add('lose'); cs.classList.add('win'); }
       } else { rs.textContent = '先玩一局'; }
-      // 携带 runId 提示去 niulai-game.html
-      $('pkGoGame').href = 'niulai-game.html?challenger='+encodeURIComponent(c.runId)+'&cname='+encodeURIComponent(c.name)+'&cscore='+encodeURIComponent(c.score)+'&pk='+encodeURIComponent(code);
-    });
+      if (cta) {
+        cta.innerHTML = '<a class="btn-gold" id="pkGoGame">▶ 去游戏挑战</a><button class="btn-ghost" onclick="document.getElementById(\'pkBanner\').classList.remove(\'show\')">稍后</button>';
+        $('pkGoGame').href = 'niulai-game.html?challenger='+encodeURIComponent(c.runId||'')+'&cname='+encodeURIComponent(c.name||'')+'&cscore='+encodeURIComponent(c.score||0)+'&pk='+encodeURIComponent(code);
+      }
+    }).catch(()=> toast('暂时无法加载挑战信息，请稍后再试'));
 }
 
 /* ============================================================
@@ -357,16 +422,36 @@ async function loadMyBest(){
       pkg.myName = (s.nickname && String(s.nickname).trim()) || '';
     }
   } catch(_){}
+  // 回退：本机排行榜最高分（结算后 runId 更准确）
+  if (!pkg.lastScore || pkg.lastScore <= 0 || !pkg.lastRunId) {
+    try {
+      const lb = JSON.parse(localStorage.getItem('niulai_leaderboard') || '[]');
+      if (Array.isArray(lb) && lb.length) {
+        const best = lb.slice().sort((a,b)=>(b.score||0)-(a.score||0))[0];
+        if (best) {
+          if (!pkg.lastRunId) pkg.lastRunId = best.id || null;
+          if (!pkg.lastScore || pkg.lastScore <= 0) pkg.lastScore = best.score || 0;
+          if (!pkg.myName) pkg.myName = best.name || '';
+        }
+      }
+    } catch(_){}
+  }
   return pkg;
 }
 
 async function logShare(channel, extra){
   const my = await loadMyBest();
   if(!my.lastRunId){ return; }
-  fetch('api/share.php', {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify(Object.assign({ run_id: my.lastRunId, score: my.lastScore||0, channel }, extra||{}))
-  }).catch(()=>{});
+  try {
+    const r = await fetch('api/share.php', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(Object.assign({ run_id: my.lastRunId, score: my.lastScore||0, channel }, extra||{}))
+    });
+    const j = await r.json().catch(()=>({}));
+    if (r.status === 429 || (j && j.rateLimited)) {
+      toast((j && j.error) || '分享太频繁，请稍后再试');
+    }
+  } catch(_){}
 }
 
 async function doShare(channel){
@@ -474,7 +559,7 @@ async function renderPoster(){
   ctx.textAlign='center';
   ctx.fillText(`扫码进入榜单 / 与好友 PK   ${location.host}`, W/2, H-44);
   ctx.fillStyle = 'rgba(255,210,63,0.85)';
-  ctx.fillText('小程序 / 网页版：搜索「牛来运转」', W/2, H-22);
+  ctx.fillText('网页版：浏览器搜索「牛来.cc」', W/2, H-22);
 
   // 我的成绩（有本地存档时）
   if (pkg.lastScore > 0){
@@ -530,13 +615,19 @@ async function createPK(){
     body: JSON.stringify({ run_id: my.lastRunId, name: pkg.myName || '牛人', score: my.lastScore, challenge:'来 PK 一局！' })
   });
   const j = await r.json();
-  if(!j.ok){ toast('生成失败：'+(j.error||'')); return; }
-  $('pkCreateInfo').textContent = `用你的成绩 ${fmt(my.lastScore)} 🪙 发起 PK · 把短码告诉好友，或发下面的链接 / 二维码`;
+  if(!j.ok){ toast('生成失败，请稍后再试'); return; }
+  try {
+    const m = JSON.parse(localStorage.getItem('niulai_pk_me') || '{}') || {};
+    m[String(j.code).toUpperCase()] = String(my.lastRunId);
+    localStorage.setItem('niulai_pk_me', JSON.stringify(m));
+  } catch(_){}
+  $('pkCreateInfo').textContent = `用你的成绩 ${fmt(my.lastScore)} 🪙 发起挑战 · 把短码告诉好友，或发下面的链接 / 二维码`;
   $('pkCreateResult').style.display = '';
   $('pkCode').textContent = j.code;
   $('pkLink').textContent = j.url;
   pkg.pkInviteUrl = j.url; pkg.pkInviteCode = j.code;
-  logShare('other');
+  pkg.pkResultUrl = j.resultUrl || ('pk-result.html?pk=' + encodeURIComponent(j.code) + '&me=' + encodeURIComponent(my.lastRunId));
+  logShare('other', { note: 'pk_create:' + j.code });
 }
 
 function copyPK(){
@@ -549,3 +640,12 @@ function openPKQR(){
   if(!pkg.pkInviteUrl){ toast('先生成邀请'); return; }
   openQR(pkg.pkInviteUrl);   // 不改 pkg.shareUrl，避免污染普通二维码
 }
+
+/* 显式挂到 window，保证内联 onclick 一定能调到（文件截断/部分执行时更稳） */
+Object.assign(window, {
+  doShare, openQR, openPoster, closeQR, closePoster, copyLink, downloadPoster,
+  createPK, copyPK, openPKQR, go, onSearch, loadPKFromURL,
+});
+</script>
+</body>
+</html>

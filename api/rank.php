@@ -31,7 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 
 $r = niulai_redis();
 if ($r === null) {
-    niulai_json(['ok' => false, 'error' => 'Redis 不可用'], 503);
+    niulai_json(['ok' => false, 'error' => '排行榜暂时不可用'], 503);
 }
 
 /* ---------- 首次 lazy seed ---------- */

@@ -17,6 +17,14 @@ define('NIULAI_HASH', 'niulai:entry:');
 define('NIULAI_KEEP', 1000);
 // 对外默认展示条数
 define('NIULAI_TOP', 100);
+// 管理后台写操作密码（浏览公开；新增/编辑/删除需此密码）
+// 可用环境变量 NIULAI_ADMIN_PASSWORD 覆盖；未设置时默认 654321
+define('NIULAI_ADMIN_PASSWORD', (getenv('NIULAI_ADMIN_PASSWORD') !== false && getenv('NIULAI_ADMIN_PASSWORD') !== '')
+    ? getenv('NIULAI_ADMIN_PASSWORD')
+    : '654321');
+// 用户分享记录限流（按 IP / 本局 run_id 分别计数）
+define('NIULAI_SHARE_LIMIT_HOUR', (int)(getenv('NIULAI_SHARE_LIMIT_HOUR') ?: 20));
+define('NIULAI_SHARE_LIMIT_DAY',  (int)(getenv('NIULAI_SHARE_LIMIT_DAY')  ?: 80));
 
 /**
  * 获取 Redis 连接实例；失败返回 null。
@@ -53,7 +61,7 @@ function niulai_json($data, $code = 200) {
     header('Content-Type: application/json; charset=utf-8');
     header('Access-Control-Allow-Origin: *');
     header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-    header('Access-Control-Allow-Headers: Content-Type');
+    header('Access-Control-Allow-Headers: Content-Type, X-Admin-Password');
     http_response_code($code);
     echo json_encode($data, JSON_UNESCAPED_UNICODE);
     exit;
@@ -65,7 +73,24 @@ function niulai_json($data, $code = 200) {
 function niulai_cors() {
     header('Access-Control-Allow-Origin: *');
     header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-    header('Access-Control-Allow-Headers: Content-Type');
+    header('Access-Control-Allow-Headers: Content-Type, X-Admin-Password');
+}
+
+/**
+ * 管理后台写操作鉴权：请求体 password 或头 X-Admin-Password。
+ * 校验失败直接返回 401 并结束。
+ */
+function niulai_admin_require_write($body = null) {
+    $pwd = '';
+    if (!empty($_SERVER['HTTP_X_ADMIN_PASSWORD'])) {
+        $pwd = strval($_SERVER['HTTP_X_ADMIN_PASSWORD']);
+    }
+    if ($pwd === '' && is_array($body) && isset($body['password'])) {
+        $pwd = strval($body['password']);
+    }
+    if (!is_string($pwd) || !hash_equals(NIULAI_ADMIN_PASSWORD, $pwd)) {
+        niulai_json(['ok' => false, 'error' => '需要管理密码', 'needPassword' => true], 401);
+    }
 }
 
 /**

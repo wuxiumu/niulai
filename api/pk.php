@@ -1,8 +1,10 @@
 <?php
 /**
- * pk.php —— 分享后好友 PK 邀请（SQLite，预留模块）
+ * pk.php —— 分享后好友 PK 邀请（SQLite）
  *
  * 数据来源：pk_invites 表（见 api/db.php）。
+ * 游戏结算页可发起（create）；好友经 leaderboard.html?pk=CODE 进入游戏应战，
+ * 局终自动 accept 回写比分（见 niulai.js · M05）。
  * 主要动作：
  *   POST ?api=1&action=create     {run_id, name, score, challenge?}
  *                                     → 创建邀请，返回 {code, url, qrimg, createdAt}
@@ -33,34 +35,53 @@ $db = niulai_db();
 /** 把一行 pk_invites 还原为前端约定形状 */
 function niulai_pk_row(array $r): array {
     $status = $r['status'] ?? 'pending';
+    $chScore = floatval($r['challenger_score'] ?? 0);
+    $rcScore = floatval($r['recipient_score'] ?? 0);
+    $hasRecipient = !empty($r['recipient_run_id']);
+    $winner = null;
+    if ($status === 'accepted' && $hasRecipient) {
+        if ($rcScore > $chScore) $winner = 'recipient';
+        elseif ($chScore > $rcScore) $winner = 'challenger';
+        else $winner = 'draw';
+    }
     return [
         'code'      => $r['code'],
         'status'    => $status,
         'challenge' => $r['challenge'] ?? '',
         'createdAt' => intval($r['created_at'] ?? 0),
         'acceptedAt'=> intval($r['accepted_at'] ?? 0),
+        'winner'    => $winner,
         'challenger'=> [
             'runId' => $r['challenger_run_id'] ?? '',
             'name'  => $r['challenger_name']   ?? '',
-            'score' => floatval($r['challenger_score'] ?? 0),
+            'score' => $chScore,
         ],
-        'recipient' => empty($r['recipient_run_id']) ? null : [
+        'recipient' => !$hasRecipient ? null : [
             'runId' => $r['recipient_run_id'] ?? '',
             'name'  => $r['recipient_name']   ?? '',
-            'score' => floatval($r['recipient_score'] ?? 0),
+            'score' => $rcScore,
         ],
     ];
 }
 
+/** 结果页绝对 URL */
+function niulai_pk_result_url(string $code): string {
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $host   = $_SERVER['HTTP_HOST'] ?? '127.0.0.1';
+    $base   = dirname(dirname($_SERVER['SCRIPT_NAME'] ?? ''));
+    if ($base === '/' || $base === '\\' || $base === '.') $base = '';
+    return $scheme . '://' . $host . $base . '/pk-result.html?pk=' . rawurlencode($code);
+}
+
 if ($method === 'POST' && $action === 'create') {
     $body = json_decode(file_get_contents('php://input'), true);
-    if (!is_array($body)) niulai_json(['ok' => false, 'error' => '无效 JSON'], 400);
+    if (!is_array($body)) niulai_json(['ok' => false, 'error' => '请求格式不对'], 400);
     $runId = trim(strval($body['run_id'] ?? ''));
     $name  = trim(strval($body['name']   ?? '牛人'));
     $score = isset($body['score']) ? floatval($body['score']) : 0;
     $ch    = trim(strval($body['challenge'] ?? ''));
-    if ($runId === '') niulai_json(['ok' => false, 'error' => '缺少 run_id'], 400);
-    if ($score <= 0)  niulai_json(['ok' => false, 'error' => 'score 必须 > 0'], 400);
+    if ($runId === '') niulai_json(['ok' => false, 'error' => '缺少本局信息'], 400);
+    if ($score <= 0)  niulai_json(['ok' => false, 'error' => '分数必须大于 0'], 400);
     if (mb_strlen($name, 'UTF-8') > 12) $name = mb_substr($name, 0, 12, 'UTF-8');
 
     $code = niulai_gen_pk_code($db);
@@ -81,6 +102,7 @@ if ($method === 'POST' && $action === 'create') {
         'ok'        => true,
         'code'      => $code,
         'url'       => $url,
+        'resultUrl' => niulai_pk_result_url($code),
         'qrimg'     => $url,                                   // 前端用 qrcodejs 直接编码 url
         'createdAt' => $now,
     ]);
@@ -106,14 +128,14 @@ if ($method === 'GET' && $action === 'resolve') {
 
 if ($method === 'POST' && $action === 'accept') {
     $body = json_decode(file_get_contents('php://input'), true);
-    if (!is_array($body)) niulai_json(['ok' => false, 'error' => '无效 JSON'], 400);
+    if (!is_array($body)) niulai_json(['ok' => false, 'error' => '请求格式不对'], 400);
     $code = strtoupper(trim(strval($body['code'] ?? '')));
     $runId = trim(strval($body['run_id'] ?? ''));
     $name  = trim(strval($body['name']   ?? '牛人'));
     $score = isset($body['score']) ? floatval($body['score']) : 0;
     if (!preg_match('/^[A-Z0-9]{6,12}$/', $code)) niulai_json(['ok' => false, 'error' => '邀请码格式不对'], 400);
-    if ($runId === '') niulai_json(['ok' => false, 'error' => '缺少 run_id'], 400);
-    if ($score <= 0)  niulai_json(['ok' => false, 'error' => 'score 必须 > 0'], 400);
+    if ($runId === '') niulai_json(['ok' => false, 'error' => '缺少本局信息'], 400);
+    if ($score <= 0)  niulai_json(['ok' => false, 'error' => '分数必须大于 0'], 400);
 
     $row = $db->prepare("SELECT * FROM pk_invites WHERE code=? LIMIT 1");
     $row->execute([$code]);
@@ -131,7 +153,12 @@ if ($method === 'POST' && $action === 'accept') {
     $st3 = $db->prepare("SELECT * FROM pk_invites WHERE code=?");
     $st3->execute([$code]);
     $row2 = $st3->fetch();
-    niulai_json(['ok' => true, 'pk' => niulai_pk_row($row2)]);
+    $pk = niulai_pk_row($row2);
+    niulai_json([
+        'ok' => true,
+        'pk' => $pk,
+        'resultUrl' => niulai_pk_result_url($code),
+    ]);
 }
 
 if ($method === 'POST' && $action === 'delete') {

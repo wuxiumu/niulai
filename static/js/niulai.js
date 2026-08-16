@@ -591,9 +591,24 @@ function endRun(reason) {
   currentEntry = entry;
   currentLb = lb;
   showResult(entry, lb);
-  // 尽力同步到服务端 PHP+Redis 排行榜（无服务端/离线时静默失败，回退本地榜）
-  submitScoreToServer(entry);
-  refreshServerBoard(false);
+  // 先写入本地排行，再尽力同步总榜
+  setBoardSource('syncing');
+  submitScoreToServer(entry).then((res) => {
+    if (res && res.ok) {
+      if (res.rank) {
+        $('resultRank').textContent = `总榜第 ${res.rank} 名（本设备第 ${lb.findIndex(e => e.id === entry.id) + 1 || '—'} 名）`;
+      }
+      setBoardSource('online', res.rank ? `已上榜 · 总榜第 ${res.rank} 名` : '成绩已同步到总榜');
+      toast('☁️ 成绩已同步到总榜', 'good');
+      return refreshServerBoard(false);
+    }
+    const why = friendlyError((res && res.error) || '');
+    setBoardSource('offline', why);
+    toast('📱 成绩已保存在本设备（' + why + '）', 'info');
+  }).finally(() => {
+    // M05：若本局是应战局，结束后回写挑战结果
+    acceptPendingPk(entry);
+  });
   refreshRunControls();
 }
 
@@ -1549,7 +1564,7 @@ $('settingsModal').addEventListener('click', (e) => {
   if (e.target === $('settingsModal')) $('settingsModal').classList.remove('show');
 });
 $('resetBtn').addEventListener('click', () => {
-  if (confirm('确定要重置存档吗？本机所有进度（含排行榜、昵称）都将清空且无法恢复！')) {
+  if (confirm('确定要重置存档吗？本设备上的所有进度（含排行榜、昵称）都将清空且无法恢复！')) {
     localStorage.removeItem('niulai_save');
     localStorage.removeItem('niulai_save_bak');
     localStorage.removeItem(LEADERBOARD_KEY); // 一并清空排行榜，避免重置后榜还在
@@ -1822,6 +1837,8 @@ function showResult(entry, lb) {
   currentLb = lb;
   boardShowingAll = false;
   serverBoard = null;
+  lastPkAccept = null;
+  resetPkCreateUi();
   const myRank = lb.findIndex(e => e.id === entry.id) + 1;
   $('resultRank').textContent = myRank > 0 ? `本局排名第 ${myRank} 位` : '';
   $('resultScore').textContent = fmt(entry.score) + ' 🪙';
@@ -1833,11 +1850,31 @@ function showResult(entry, lb) {
   }[entry.reason] || entry.reason;
   $('resultReason').textContent = reasonText;
   $('nickInput').value = entry.name; // 预填昵称，可编辑
-  $('lbTitle').textContent = '🏆 牛人排行榜（本机）';
-  renderBoard(lb, false);            // 先渲染本地榜，联网后由服务端榜替换
+  $('lbTitle').textContent = '🏆 牛人排行榜';
+  setBoardSource('syncing');
+  renderBoard(lb, false);            // 先渲染本地榜，联网后替换为总榜
   renderResultLog();                 // 结算先看本局流水
   showResultStage('log');
   $('resultModal').classList.add('show');
+}
+
+/** 结算页榜源状态：syncing | online | offline */
+function setBoardSource(mode, detail) {
+  const el = $('lbSource');
+  if (!el) return;
+  el.classList.remove('online', 'offline', 'syncing');
+  if (mode === 'online') {
+    el.classList.add('online');
+    $('lbTitle').textContent = '🏆 牛人排行榜';
+    el.textContent = '☁️ ' + (detail || '已同步最新排名');
+  } else if (mode === 'offline') {
+    el.classList.add('offline');
+    $('lbTitle').textContent = '🏆 牛人排行榜（仅本设备）';
+    el.textContent = '📱 ' + (detail ? ('暂仅本设备可见 · ' + friendlyError(detail)) : '暂仅本设备可见，联网后自动同步');
+  } else {
+    el.classList.add('syncing');
+    el.textContent = '⏳ 正在同步排行榜…';
+  }
 }
 
 // 结算弹窗两阶段：'log' = 本局流水回顾（默认）；'board' = 昵称编辑 + 排行榜
@@ -1873,7 +1910,7 @@ function renderBoard(list, showAll, hasMore) {
   }).join('');
   const more = (typeof hasMore === 'boolean') ? hasMore : (list.length > limit);
   $('lbMoreBtn').style.display = more ? 'block' : 'none';
-  $('lbMoreBtn').textContent = showAll ? '已显示全部' : '查看跟多 ↓';
+  $('lbMoreBtn').textContent = showAll ? '已显示全部' : '查看更多 ↓';
   $('lbMoreBtn').disabled = !!showAll;
 }
 
@@ -1881,33 +1918,65 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-// 提交成绩到服务端 PHP+Redis 排行榜（尽力而为，失败不影响本机）
-function submitScoreToServer(entry) {
-  try {
-    fetch('api/submit.php', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(entry)
-    }).catch(() => {});
-  } catch (e) {}
+/** 把接口/网络错误转成玩家能看懂的话（不暴露技术名词） */
+function friendlyError(err) {
+  const s = String(err || '').trim();
+  if (!s) return '暂时连不上，请稍后再试';
+  if (/Redis|SQLite|HTTP\s*\d|服务端|JSON|PDO|php|run_id|score/i.test(s)) return '暂时连不上，请稍后再试';
+  if (/不可用|失败|超时|network|fetch/i.test(s) && /[A-Za-z]{3,}/.test(s)) return '暂时连不上，请稍后再试';
+  return s;
 }
 
-// 从服务端拉取排行榜；all=true 表示「查看跟多」（取全部）
+// 提交成绩到服务端 PHP+Redis 排行榜
+// 返回 Promise<{ok, rank?, error?}>；失败不影响本机榜
+function submitScoreToServer(entry) {
+  if (!entry || !(entry.score > 0)) {
+    return Promise.resolve({ ok: false, error: '成绩为 0，未上传排行榜' });
+  }
+  return fetch('api/submit.php', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(entry),
+  })
+    .then(async (r) => {
+      let j = null;
+      try { j = await r.json(); } catch (e) { /* ignore */ }
+      if (r.ok && j && j.ok) return { ok: true, rank: j.rank || null, runId: j.runId };
+      const err = (j && j.error) ? j.error : '暂时连不上';
+      return { ok: false, error: friendlyError(err) };
+    })
+    .catch(() => ({ ok: false, error: '暂时连不上，请稍后再试' }));
+}
+
 function refreshServerBoard(all) {
   const url = 'api/rank.php' + (all ? '?all=1' : '');
-  fetch(url, { cache: 'no-store' })
-    .then(r => (r.ok ? r.json() : null))
-    .then(j => {
-      if (j && j.ok && Array.isArray(j.list) && j.list.length) {
-        serverBoard = j.list;
-        boardShowingAll = !!all;
-        $('lbTitle').textContent = '🏆 牛人排行榜（全网）';
-        renderBoard(j.list, !!all, all ? false : !!j.hasMore);
-      } else if (all) {
-        renderBoard(currentLb, true); // 服务端取全部失败，回退展开本地榜
+  return fetch(url, { cache: 'no-store' })
+    .then(async (r) => {
+      let j = null;
+      try { j = await r.json(); } catch (e) { /* ignore */ }
+      if (!r.ok || !j || !j.ok || !Array.isArray(j.list)) {
+        if (all) renderBoard(currentLb, true);
+        setBoardSource('offline', (j && j.error) ? j.error : '拉榜失败');
+        return false;
       }
+      serverBoard = j.list;
+      boardShowingAll = !!all;
+      setBoardSource('online', all ? `共 ${j.total || j.list.length} 条` : `共 ${j.total || j.list.length} 条`);
+      renderBoard(j.list, !!all, all ? false : !!j.hasMore);
+      if (currentEntry) {
+        const idx = j.list.findIndex(e => e.id === currentEntry.id);
+        if (idx >= 0) {
+          const localIdx = currentLb.findIndex(e => e.id === currentEntry.id);
+          $('resultRank').textContent = `总榜第 ${idx + 1} 名` + (localIdx >= 0 ? `（本机第 ${localIdx + 1} 名）` : '');
+        }
+      }
+      return true;
     })
-    .catch(() => { if (all) renderBoard(currentLb, true); });
+    .catch(() => {
+      if (all) renderBoard(currentLb, true);
+      setBoardSource('offline', '暂时连不上');
+      return false;
+    });
 }
 
 // 结算页「查看跟多」
@@ -1930,10 +1999,17 @@ function saveNick(restart) {
   lb.sort((a, b) => b.score - a.score);
   saveLeaderboard(lb);
   currentLb = lb;
-  $('lbTitle').textContent = serverBoard ? '🏆 牛人排行榜（全网）' : '🏆 牛人排行榜（本机）';
-  if (serverBoard) refreshServerBoard(boardShowingAll); // 保留 hasMore 标记
+  $('lbTitle').textContent = '🏆 牛人排行榜' + (serverBoard ? '' : '（本机）');
+  if (serverBoard) refreshServerBoard(boardShowingAll);
   else renderBoard(lb, boardShowingAll);
-  submitScoreToServer(currentEntry); // 同 runId 覆盖昵称
+  submitScoreToServer(currentEntry).then((res) => {
+    if (res && res.ok) {
+      setBoardSource('online', res.rank ? `昵称已更新 · 总榜第 ${res.rank} 名` : '昵称已同步');
+      refreshServerBoard(boardShowingAll);
+    } else {
+      setBoardSource('offline', (res && res.error) || '暂时连不上');
+    }
+  });
   save();
   toast('昵称已保存：' + v, 'good');
   // 保存昵称成功 → 自动关闭弹窗并再来一局（仅在显式点击「保存」时触发重开）
@@ -1959,6 +2035,594 @@ $('againBtn').addEventListener('click', () => {
   toast('🔄 新的一局开始！冲！', 'good');
 });
 
+/* ===== M04：结算页分享（海报 / 二维码 / 复制链接 → api/share.php） ===== */
+let sharePosterFmt = 'portrait';
+const SHARE_BOARD_URL = () => {
+  try {
+    return new URL('leaderboard.html', location.href).href;
+  } catch (e) {
+    return location.origin + location.pathname.replace(/[^/]*$/, '') + 'leaderboard.html';
+  }
+};
+
+function sharePayload() {
+  const e = currentEntry || {};
+  return {
+    run_id: e.id || state.runId || '',
+    score: Number(e.score) || Number(state.maxNetWorth) || 0,
+    name: e.name || state.nickname || '牛人',
+    reason: e.reason || '',
+    date: e.date || new Date().toLocaleDateString('zh-CN'),
+  };
+}
+
+/** 记一条分享事件到 SQLite（失败静默，不影响本机分享体验） */
+function logShareEvent(channel, extra) {
+  const p = sharePayload();
+  if (!p.run_id) return Promise.resolve({ ok: false, error: '无 run_id' });
+  const body = Object.assign({
+    run_id: p.run_id,
+    score: p.score,
+    channel: channel || 'other',
+    note: (p.name || '') + (p.reason ? ' · ' + p.reason : ''),
+  }, extra || {});
+  return fetch('api/share.php', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+    .then(async (r) => {
+      let j = null;
+      try { j = await r.json(); } catch (e) { /* ignore */ }
+      if (r.ok && j && j.ok) {
+        const hint = $('shareHint');
+        if (hint) hint.textContent = '✅ 分享已记录，好友打开链接就能看到牛人榜';
+        return j;
+      }
+      const err = friendlyError((j && j.error) || '暂时连不上');
+      if (r.status === 429 || (j && j.rateLimited)) {
+        const hint = $('shareHint');
+        if (hint) hint.textContent = '⏳ ' + err;
+        toast(err, 'info');
+      }
+      return { ok: false, error: err, rateLimited: !!(j && j.rateLimited) };
+    })
+    .catch(() => ({ ok: false, error: '暂时连不上，请稍后再试' }));
+}
+
+async function shareCopyLink() {
+  const url = SHARE_BOARD_URL();
+  try {
+    await navigator.clipboard.writeText(url);
+    toast('链接已复制', 'good');
+  } catch (e) {
+    prompt('复制此链接发给好友：', url);
+  }
+  const res = await logShareEvent('copy');
+  if (!res.ok) toast('链接已复制 · 分享记录暂未记下（' + friendlyError(res.error) + '）', 'info');
+}
+
+async function shareSystem() {
+  const url = SHARE_BOARD_URL();
+  const p = sharePayload();
+  const text = `我在「牛来运转」打出 ${fmt(p.score)} 🪙（${p.reason || '本局结算'}），来牛人榜较量！`;
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: '牛来运转 · 本局战绩', text, url });
+      await logShareEvent('system');
+      return;
+    } catch (e) {
+      if (e && e.name === 'AbortError') return; // 用户取消
+    }
+  }
+  await shareCopyLink(); // 不支持 system 时退化为复制
+}
+
+function openShareQr() {
+  const url = SHARE_BOARD_URL();
+  const box = $('shareQrCanvas');
+  if (!box) return;
+  box.innerHTML = '';
+  const QR = window.QRCode;
+  if (!QR) {
+    toast('二维码库未加载', 'bad');
+    return;
+  }
+  try {
+    new QR(box, {
+      text: url,
+      width: 200,
+      height: 200,
+      colorDark: '#222',
+      colorLight: '#fff',
+      correctLevel: QR.CorrectLevel.M,
+    });
+  } catch (e) {
+    toast('二维码生成失败', 'bad');
+    return;
+  }
+  $('shareQrCap').textContent = '扫码打开牛人榜 · ' + (location.host || '本机');
+  $('shareQrModal').classList.add('show');
+  logShareEvent('qrcode');
+}
+
+function closeShareQr() {
+  const m = $('shareQrModal');
+  if (m) m.classList.remove('show');
+}
+
+function openSharePoster() {
+  $('sharePosterModal').classList.add('show');
+  renderSharePoster();
+  logShareEvent('poster', { poster_format: sharePosterFmt });
+}
+
+function closeSharePoster() {
+  const m = $('sharePosterModal');
+  if (m) m.classList.remove('show');
+}
+
+function renderSharePoster() {
+  const cv = $('sharePosterCanvas');
+  if (!cv) return;
+  const ctx = cv.getContext('2d');
+  const p = sharePayload();
+  const W = sharePosterFmt === 'landscape' ? 900 : 540;
+  const H = sharePosterFmt === 'landscape' ? 540 : 900;
+  cv.width = W;
+  cv.height = H;
+
+  const g = ctx.createLinearGradient(0, 0, W, H);
+  g.addColorStop(0, '#1b2030');
+  g.addColorStop(1, '#0f1115');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.globalAlpha = 0.12;
+  for (let i = 0; i < 5; i++) {
+    ctx.beginPath();
+    ctx.fillStyle = ['#ffd23f', '#e23b3b', '#5a9bff'][i % 3];
+    ctx.arc((i * 173) % W, (i * 131) % H, 80 + i * 20, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  ctx.fillStyle = '#ffd23f';
+  ctx.font = 'bold 40px "PingFang SC","Microsoft YaHei",sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('🐂 牛来运转', W / 2, 64);
+  ctx.fillStyle = '#9aa3b2';
+  ctx.font = '18px "PingFang SC","Microsoft YaHei",sans-serif';
+  ctx.fillText('本局战绩海报', W / 2, 96);
+
+  const cardH = sharePosterFmt === 'landscape' ? 280 : 380;
+  ctx.fillStyle = '#171a21';
+  ctx.fillRect(40, 130, W - 80, cardH);
+  ctx.strokeStyle = 'rgba(255,210,63,0.45)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(40, 130, W - 80, cardH);
+
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 36px "PingFang SC","Microsoft YaHei",sans-serif';
+  ctx.fillText(p.name || '牛人', W / 2, 190);
+  ctx.fillStyle = '#ffd23f';
+  ctx.font = 'bold 72px "PingFang SC","Microsoft YaHei",sans-serif';
+  ctx.fillText(fmt(p.score), W / 2, 280);
+  ctx.fillStyle = '#ff6b6b';
+  ctx.font = '22px "PingFang SC","Microsoft YaHei",sans-serif';
+  ctx.fillText((p.reason || '本局结算') + ' · ' + (p.date || ''), W / 2, 330);
+
+  const board = (serverBoard && serverBoard.length) ? serverBoard : currentLb;
+  const others = (board || []).filter(e => e.id !== p.run_id).slice(0, 4);
+  let y = sharePosterFmt === 'landscape' ? 440 : 560;
+  ctx.fillStyle = '#9aa3b2';
+  ctx.font = '16px "PingFang SC","Microsoft YaHei",sans-serif';
+  ctx.fillText(others.length ? '同榜一瞥' : '去牛人榜看看还有谁', W / 2, y - 24);
+  others.forEach((e, i) => {
+    const yy = y + i * 28;
+    ctx.fillStyle = '#f4f6fb';
+    ctx.font = '18px "PingFang SC","Microsoft YaHei",sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(`${i + 1}. ${e.name}`, 60, yy);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#ff6b6b';
+    ctx.fillText(fmt(e.score), W - 60, yy);
+  });
+  ctx.textAlign = 'center';
+
+  ctx.fillStyle = '#9aa3b2';
+  ctx.font = '15px "PingFang SC","Microsoft YaHei",sans-serif';
+  ctx.fillText('扫码打开牛人榜 · ' + (location.host || 'localhost'), W / 2, H - 36);
+
+  // 右下角二维码
+  drawShareCornerQr(ctx, W, H, SHARE_BOARD_URL());
+}
+
+function drawShareCornerQr(ctx, W, H, url) {
+  const QR = window.QRCode;
+  if (!QR) return;
+  const div = document.createElement('div');
+  div.style.cssText = 'position:absolute;left:-9999px;top:0;';
+  document.body.appendChild(div);
+  try {
+    new QR(div, {
+      text: url,
+      width: 110,
+      height: 110,
+      colorDark: '#222',
+      colorLight: '#fff',
+      correctLevel: QR.CorrectLevel.L,
+    });
+  } catch (e) {
+    document.body.removeChild(div);
+    return;
+  }
+  setTimeout(() => {
+    const img = div.querySelector('img') || div.querySelector('canvas');
+    const sz = sharePosterFmt === 'landscape' ? 120 : 140;
+    try {
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(W - sz - 28, H - sz - 70, sz, sz);
+      if (img) ctx.drawImage(img, W - sz - 18, H - sz - 60, sz - 20, sz - 20);
+    } catch (e) { /* ignore */ }
+    if (div.parentNode) document.body.removeChild(div);
+  }, 100);
+}
+
+function downloadSharePoster() {
+  const cv = $('sharePosterCanvas');
+  if (!cv) return;
+  const a = document.createElement('a');
+  a.download = `niulai-run-${sharePosterFmt}-${Date.now()}.png`;
+  a.href = cv.toDataURL('image/png');
+  a.click();
+  toast('海报已开始下载', 'good');
+}
+
+// 绑定分享按钮
+const shareCopyBtn = $('shareCopyBtn');
+if (shareCopyBtn) shareCopyBtn.addEventListener('click', () => { playSfx('click'); shareCopyLink(); });
+const shareSystemBtn = $('shareSystemBtn');
+if (shareSystemBtn) shareSystemBtn.addEventListener('click', () => { playSfx('click'); shareSystem(); });
+const shareQrBtn = $('shareQrBtn');
+if (shareQrBtn) shareQrBtn.addEventListener('click', () => { playSfx('click'); openShareQr(); });
+const sharePosterBtn = $('sharePosterBtn');
+if (sharePosterBtn) sharePosterBtn.addEventListener('click', () => { playSfx('click'); openSharePoster(); });
+const shareQrCloseBtn = $('shareQrCloseBtn');
+if (shareQrCloseBtn) shareQrCloseBtn.addEventListener('click', closeShareQr);
+const sharePosterCloseBtn = $('sharePosterCloseBtn');
+if (sharePosterCloseBtn) sharePosterCloseBtn.addEventListener('click', closeSharePoster);
+const sharePosterDlBtn = $('sharePosterDlBtn');
+if (sharePosterDlBtn) sharePosterDlBtn.addEventListener('click', () => { playSfx('click'); downloadSharePoster(); });
+document.querySelectorAll('#shareFmtToggle button').forEach((b) => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('#shareFmtToggle button').forEach((x) => x.classList.toggle('active', x === b));
+    sharePosterFmt = b.dataset.f || 'portrait';
+    renderSharePoster();
+  });
+});
+['shareQrModal', 'sharePosterModal'].forEach((id) => {
+  const el = $(id);
+  if (!el) return;
+  el.addEventListener('click', (e) => {
+    if (e.target !== el) return;
+    el.classList.remove('show');
+  });
+});
+
+/* ===== M05：好友 PK 闭环 ===== */
+const PK_STORAGE_KEY = 'niulai_pending_pk';
+const PK_ME_KEY = 'niulai_pk_me';
+let pendingPk = null;       // { code, cname, cscore, challengerRunId }
+let lastCreatedPk = null;   // { code, url, resultUrl }
+let lastPkAccept = null;    // accept 返回的 pk 对象
+
+function readPkMeMap() {
+  try { return JSON.parse(localStorage.getItem(PK_ME_KEY) || '{}') || {}; }
+  catch (e) { return {}; }
+}
+
+/** 标记本机是某场挑战的当事人（发起或应战），结果页据此决定是否礼花 */
+function markPkParticipant(code, runId) {
+  if (!code || !runId) return;
+  const m = readPkMeMap();
+  m[String(code).toUpperCase()] = String(runId);
+  try { localStorage.setItem(PK_ME_KEY, JSON.stringify(m)); } catch (e) { /* ignore */ }
+}
+
+function pkResultHref(code, runId) {
+  let url = 'pk-result.html?pk=' + encodeURIComponent(code || '');
+  if (runId) url += '&me=' + encodeURIComponent(runId);
+  return url;
+}
+
+function goPkResult(code, runId) {
+  location.href = pkResultHref(code, runId);
+}
+
+function readPendingPk() {
+  try {
+    const raw = sessionStorage.getItem(PK_STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) { /* ignore */ }
+  return null;
+}
+
+function writePendingPk(obj) {
+  pendingPk = obj;
+  try {
+    if (obj) sessionStorage.setItem(PK_STORAGE_KEY, JSON.stringify(obj));
+    else sessionStorage.removeItem(PK_STORAGE_KEY);
+  } catch (e) { /* ignore */ }
+  renderPkChallengeBar();
+}
+
+function clearPendingPk() {
+  writePendingPk(null);
+}
+
+function renderPkChallengeBar() {
+  const bar = $('pkChallengeBar');
+  if (!bar) return;
+  if (!pendingPk || !pendingPk.code) {
+    bar.style.display = 'none';
+    return;
+  }
+  bar.style.display = 'flex';
+  const name = pendingPk.cname || '对手';
+  const sc = pendingPk.cscore ? fmt(pendingPk.cscore) : '—';
+  $('pkChallengeText').textContent = `⚔️ 应战中：超越 ${name} 的 ${sc} 🪙 · 本局结束自动回写 PK（码 ${pendingPk.code}）`;
+}
+
+/** 从 URL ?pk= 解析应战信息并校验服务端状态 */
+function loadPkFromUrl() {
+  let params;
+  try { params = new URLSearchParams(location.search); } catch (e) { return; }
+  const code = (params.get('pk') || '').toUpperCase().trim();
+  if (!code) {
+    // 无 URL 时尝试恢复 session 中的应战
+    const saved = readPendingPk();
+    if (saved && saved.code) {
+      pendingPk = saved;
+      renderPkChallengeBar();
+    }
+    return;
+  }
+  const cname = params.get('cname') || params.get('name') || '对手';
+  const cscore = parseFloat(params.get('cscore') || params.get('score') || '0') || 0;
+  const challengerRunId = params.get('challenger') || '';
+
+  fetch('api/pk.php?api=1&action=resolve&code=' + encodeURIComponent(code), { cache: 'no-store' })
+    .then(async (r) => {
+      let j = null;
+      try { j = await r.json(); } catch (e) { /* ignore */ }
+      if (!j || !j.ok || !j.pk) {
+        toast('PK 邀请无效：' + friendlyError((j && j.error) || ''), 'bad');
+        return;
+      }
+      const pk = j.pk;
+      if (pk.status === 'expired') {
+        toast('该挑战邀请已过期', 'info');
+        clearPendingPk();
+        return;
+      }
+      if (pk.status === 'accepted') {
+        toast('这场挑战已结束，正在打开结果页…', 'info');
+        clearPendingPk();
+        const myId = (pk.recipient && pk.recipient.runId) || '';
+        setTimeout(() => goPkResult(pk.code || code, myId), 400);
+        return;
+      }
+      const ch = pk.challenger || {};
+      writePendingPk({
+        code: pk.code || code,
+        cname: ch.name || cname,
+        cscore: ch.score || cscore,
+        challengerRunId: ch.runId || challengerRunId,
+      });
+      toast(`⚔️ 已接战：目标 ${pendingPk.cname} ${fmt(pendingPk.cscore)} 🪙`, 'good');
+      try {
+        const u = new URL(location.href);
+        u.searchParams.set('pk', pendingPk.code);
+        history.replaceState(null, '', u.pathname + '?' + u.searchParams.toString() + u.hash);
+      } catch (e) { /* ignore */ }
+    })
+    .catch(() => toast('无法确认挑战邀请，请稍后再试', 'info'));
+}
+
+/** 结算页：用本局成绩发起 PK */
+function createPkInvite() {
+  const e = currentEntry;
+  if (!e || !(e.score > 0)) {
+    toast('本局成绩为 0，无法发起 PK', 'info');
+    return;
+  }
+  const btn = $('pkCreateBtn');
+  if (btn) btn.disabled = true;
+  fetch('api/pk.php?api=1&action=create', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      run_id: e.id,
+      name: e.name || state.nickname || '牛人',
+      score: e.score,
+      challenge: '来 PK 一局！',
+    }),
+  })
+    .then(async (r) => {
+      let j = null;
+      try { j = await r.json(); } catch (err) { /* ignore */ }
+      if (!r.ok || !j || !j.ok) {
+        toast('发起挑战失败：' + friendlyError((j && j.error) || ''), 'bad');
+        return;
+      }
+      lastCreatedPk = { code: j.code, url: j.url, resultUrl: j.resultUrl || pkResultHref(j.code, e.id) };
+      markPkParticipant(j.code, e.id);
+      const codeEl = $('pkCreateCode');
+      if (codeEl) {
+        codeEl.style.display = 'block';
+        codeEl.textContent = j.code;
+      }
+      const hint = $('pkCreateHint');
+      if (hint) hint.textContent = '邀请已生成 · 把短码或链接发给好友，对方玩完一局会自动比分';
+      if ($('pkCopyBtn')) $('pkCopyBtn').style.display = '';
+      if ($('pkShowQrBtn')) $('pkShowQrBtn').style.display = '';
+      toast('⚔️ 挑战邀请已生成：' + j.code, 'good');
+      logShareEvent('other', { note: 'pk_create:' + j.code });
+    })
+    .catch(() => toast('发起挑战失败，请稍后再试', 'bad'))
+    .finally(() => { if (btn) btn.disabled = false; });
+}
+
+async function copyPkInvite() {
+  if (!lastCreatedPk || !lastCreatedPk.url) {
+    toast('请先生成 PK 邀请', 'info');
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(lastCreatedPk.url);
+    toast('PK 邀请链接已复制', 'good');
+  } catch (e) {
+    prompt('复制邀请链接：', lastCreatedPk.url);
+  }
+}
+
+function showPkInviteQr() {
+  if (!lastCreatedPk || !lastCreatedPk.url) {
+    toast('请先生成 PK 邀请', 'info');
+    return;
+  }
+  const box = $('shareQrCanvas');
+  if (!box) return;
+  box.innerHTML = '';
+  const QR = window.QRCode;
+  if (!QR) { toast('二维码库未加载', 'bad'); return; }
+  try {
+    new QR(box, {
+      text: lastCreatedPk.url,
+      width: 200,
+      height: 200,
+      colorDark: '#222',
+      colorLight: '#fff',
+      correctLevel: QR.CorrectLevel.M,
+    });
+  } catch (e) {
+    toast('二维码生成失败', 'bad');
+    return;
+  }
+  $('shareQrCap').textContent = '扫码应战 PK · 码 ' + lastCreatedPk.code;
+  $('shareQrModal').classList.add('show');
+}
+
+/** 应战局结束：回写 accept */
+function acceptPendingPk(entry) {
+  const pk = pendingPk || readPendingPk();
+  if (!pk || !pk.code || !entry) return;
+  if (!(entry.score > 0)) {
+    toast('成绩为 0，未回写 PK（可再开一局应战）', 'info');
+    return;
+  }
+  // 不能跟自己 PK（同 runId）
+  if (pk.challengerRunId && pk.challengerRunId === entry.id) {
+    toast('不能用同一局跟自己 PK', 'info');
+    return;
+  }
+  fetch('api/pk.php?api=1&action=accept', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      code: pk.code,
+      run_id: entry.id,
+      name: entry.name || state.nickname || '牛人',
+      score: entry.score,
+    }),
+  })
+    .then(async (r) => {
+      let j = null;
+      try { j = await r.json(); } catch (e) { /* ignore */ }
+      if (!r.ok || !j || !j.ok) {
+        toast('挑战结果未能提交：' + friendlyError((j && j.error) || ''), 'bad');
+        return;
+      }
+      lastPkAccept = j.pk;
+      markPkParticipant(pk.code, entry.id);
+      clearPendingPk();
+      try {
+        const u = new URL(location.href);
+        ['pk', 'cname', 'cscore', 'challenger', 'name', 'score'].forEach((k) => u.searchParams.delete(k));
+        const q = u.searchParams.toString();
+        history.replaceState(null, '', u.pathname + (q ? '?' + q : '') + u.hash);
+      } catch (e) { /* ignore */ }
+      const ch = j.pk.challenger || {};
+      const rc = j.pk.recipient || {};
+      const win = (rc.score || 0) >= (ch.score || 0);
+      toast(win ? '🏆 挑战胜利！正在打开结果页…' : '😅 惜败，正在打开结果页…', win ? 'good' : 'info');
+      const resultUrl = j.resultUrl || pkResultHref(pk.code, entry.id);
+      setTimeout(() => { location.href = resultUrl.includes('me=') ? resultUrl : pkResultHref(pk.code, entry.id); }, 500);
+    })
+    .catch(() => toast('挑战结果未能提交，请稍后再试', 'bad'));
+}
+
+function renderPkAcceptResult(pk) {
+  const box = $('pkResultBox');
+  if (!box || !pk) return;
+  const ch = pk.challenger || {};
+  const rc = pk.recipient || {};
+  const win = (rc.score || 0) >= (ch.score || 0);
+  box.style.display = 'block';
+  $('pkResultTitle').textContent = win ? '🏆 PK 胜利' : '⚔️ PK 结束';
+  $('pkResultVs').innerHTML = `
+    <div class="side">
+      <div class="who">${escapeHtml(ch.name || '发起方')}</div>
+      <div class="sc ${win ? 'lose' : 'win'}">${fmt(ch.score || 0)}</div>
+      <div class="tag">发起方</div>
+    </div>
+    <div class="side">
+      <div class="who">${escapeHtml(rc.name || '你')}</div>
+      <div class="sc ${win ? 'win' : 'lose'}">${fmt(rc.score || 0)}</div>
+      <div class="tag">应战方 · 你</div>
+    </div>`;
+  $('pkResultHint').textContent = win
+    ? `你以 ${fmt(rc.score)} 压过对方 ${fmt(ch.score)} · 邀请码 ${pk.code}`
+    : `对方 ${fmt(ch.score)} 更高 · 邀请码 ${pk.code}`;
+  const link = $('pkResultLink');
+  if (link) {
+    link.href = pkResultHref(pk.code, rc.runId || '');
+    link.textContent = '打开挑战结果页';
+  }
+  showResultStage('board');
+}
+
+function resetPkCreateUi() {
+  lastCreatedPk = null;
+  const codeEl = $('pkCreateCode');
+  if (codeEl) { codeEl.style.display = 'none'; codeEl.textContent = '------'; }
+  if ($('pkCopyBtn')) $('pkCopyBtn').style.display = 'none';
+  if ($('pkShowQrBtn')) $('pkShowQrBtn').style.display = 'none';
+  if ($('pkCreateHint')) $('pkCreateHint').textContent = '用本局成绩发起挑战 · 好友打开链接后开一局应战';
+  // 若本局刚 accept，保留结果卡；否则隐藏
+  if (!lastPkAccept && $('pkResultBox')) $('pkResultBox').style.display = 'none';
+}
+
+// PK 按钮绑定
+const pkCreateBtn = $('pkCreateBtn');
+if (pkCreateBtn) pkCreateBtn.addEventListener('click', () => { playSfx('click'); createPkInvite(); });
+const pkCopyBtn = $('pkCopyBtn');
+if (pkCopyBtn) pkCopyBtn.addEventListener('click', () => { playSfx('click'); copyPkInvite(); });
+const pkShowQrBtn = $('pkShowQrBtn');
+if (pkShowQrBtn) pkShowQrBtn.addEventListener('click', () => { playSfx('click'); showPkInviteQr(); });
+const pkChallengeDismiss = $('pkChallengeDismiss');
+if (pkChallengeDismiss) pkChallengeDismiss.addEventListener('click', () => {
+  clearPendingPk();
+  toast('已取消应战', 'info');
+  try {
+    const u = new URL(location.href);
+    ['pk', 'cname', 'cscore', 'challenger'].forEach((k) => u.searchParams.delete(k));
+    const q = u.searchParams.toString();
+    history.replaceState(null, '', u.pathname + (q ? '?' + q : '') + u.hash);
+  } catch (e) { /* ignore */ }
+});
+
 // 结算弹窗：点击遮罩（弹窗外）的处理
 // - 昵称未改动 → 直接关闭弹窗（仅 dismiss，不重开）
 // - 昵称有改动/未确认 → 提示确认昵称，确认则保存并关闭，取消则继续编辑
@@ -1982,6 +2646,8 @@ $('resultModal').addEventListener('click', (e) => {
 /* ===== 初始化 ===== */
 function init() {
   applyOfflineProgress(); // 离线收益补发
+  // M05：URL / session 中的 PK 应战
+  loadPkFromUrl();
   // 昵称：首次进入随机生成，之后复用
   if (!state.nickname || !state.nickname.trim()) {
     state.nickname = randomName();

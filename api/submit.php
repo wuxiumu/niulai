@@ -27,7 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 $raw = file_get_contents('php://input');
 $payload = json_decode($raw, true);
 if (!is_array($payload)) {
-    niulai_json(['ok' => false, 'error' => '无效的 JSON 请求体'], 400);
+    niulai_json(['ok' => false, 'error' => '请求格式不对'], 400);
 }
 
 $id       = trim(strval($payload['id'] ?? ''));
@@ -39,7 +39,7 @@ $runStart = isset($payload['runStart']) ? intval($payload['runStart']) : 0;
 $runEnd   = isset($payload['runEnd'])   ? intval($payload['runEnd'])   : 0;
 
 if ($score <= 0) {
-    niulai_json(['ok' => false, 'error' => 'score 非法（必须 > 0）'], 400);
+    niulai_json(['ok' => false, 'error' => '分数无效'], 400);
 }
 if ($id === '') {
     $id = 'run_' . bin2hex(random_bytes(8)) . '_' . time();
@@ -56,7 +56,7 @@ if ($date === '') {
 
 $r = niulai_redis();
 if ($r === null) {
-    niulai_json(['ok' => false, 'error' => 'Redis 不可用'], 503);
+    niulai_json(['ok' => false, 'error' => '排行榜暂时不可用'], 503);
 }
 
 try {
@@ -101,5 +101,5 @@ try {
     $rank = $r->zRevRank(NIULAI_ZSET, $id);
     niulai_json(['ok' => true, 'runId' => $id, 'rank' => $rank === false ? null : ($rank + 1)]);
 } catch (Exception $e) {
-    niulai_json(['ok' => false, 'error' => '写入失败：' . $e->getMessage()], 500);
+    niulai_json(['ok' => false, 'error' => '保存失败，请稍后再试'], 500);
 }

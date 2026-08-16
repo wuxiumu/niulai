@@ -16,20 +16,24 @@
  *
  * 未带 ?api=1 直接访问本文件 → 返回 JSON 提示，引导到 /admin/
  *
+ * 权限：GET list 公开；POST 写操作需管理密码（body.password 或头 X-Admin-Password）。
+ *   POST ?api=1&tab=auth&action=verify  {password}  仅校验密码，成功后前端可记录授权状态
+ *
  * 排行榜接口：
  *   GET  ?api=1&tab=rank&action=list&page=&per=&q=                  分页+搜索
- *   POST ?api=1&tab=rank&action=save    {id?,name,score,reason,date}  新增或更新
- *   POST ?api=1&tab=rank&action=delete  {id}                            删除一条
- *   POST ?api=1&tab=rank&action=clear                                   清空全部 + 删 sentinel
+ *   POST ?api=1&tab=rank&action=save    {id?,name,score,reason,date,password}
+ *   POST ?api=1&tab=rank&action=delete  {id,password}
+ *   POST ?api=1&tab=rank&action=clear   {password}
  *
  * 分享记录接口：
  *   GET  ?api=1&tab=share&action=list&page=&per=&channel=&q=
- *   POST ?api=1&tab=share&action=delete {id}
- *   POST ?api=1&tab=share&action=clear
+ *   POST ?api=1&tab=share&action=delete {id,password}
+ *   POST ?api=1&tab=share&action=clear  {password}
  *
  * PK 邀请接口：
  *   GET  ?api=1&tab=pk&action=list&page=&per=&status=
- *   POST ?api=1&tab=pk&action=clear
+ *   POST ?api=1&tab=pk&action=delete {code,password}
+ *   POST ?api=1&tab=pk&action=clear  {password}
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/db.php';
@@ -55,11 +59,24 @@ $tab    = strtolower(trim(strval($_GET['tab']    ?? '')));
 $action = strtolower(trim(strval($_GET['action'] ?? '')));
 
 /* ============================================================
+ *  tab: auth（仅校验密码，不改数据）
+ * ============================================================ */
+if ($tab === 'auth') {
+    if ($method === 'POST' && $action === 'verify') {
+        $body = json_decode(file_get_contents('php://input'), true);
+        if (!is_array($body)) $body = [];
+        niulai_admin_require_write($body);
+        niulai_json(['ok' => true, 'authed' => true]);
+    }
+    niulai_json(['ok' => false, 'error' => '未识别的 auth 动作'], 400);
+}
+
+/* ============================================================
  *  tab: rank（排行榜，Redis）
  * ============================================================ */
 if ($tab === 'rank') {
     $r = niulai_redis();
-    if ($r === null) niulai_json(['ok' => false, 'error' => 'Redis 不可用'], 503);
+    if ($r === null) niulai_json(['ok' => false, 'error' => '排行榜暂时不可用'], 503);
 
     if ($method === 'GET' && $action === 'list') {
         $page = max(1, intval($_GET['page'] ?? 1));
@@ -95,6 +112,7 @@ if ($tab === 'rank') {
     if ($method === 'POST' && $action === 'save') {
         $body = json_decode(file_get_contents('php://input'), true);
         if (!is_array($body)) $body = [];
+        niulai_admin_require_write($body);
         $id     = trim(strval($body['id'] ?? ''));
         $name   = trim(strval($body['name'] ?? ''));
         $score  = isset($body['score']) ? floatval($body['score']) : 0;
@@ -119,6 +137,8 @@ if ($tab === 'rank') {
 
     if ($method === 'POST' && $action === 'delete') {
         $body = json_decode(file_get_contents('php://input'), true);
+        if (!is_array($body)) $body = [];
+        niulai_admin_require_write($body);
         $id = trim(strval($body['id'] ?? ''));
         if ($id === '') niulai_json(['ok' => false, 'error' => '缺少 id'], 400);
         $r->zRem(NIULAI_ZSET, $id);
@@ -127,6 +147,9 @@ if ($tab === 'rank') {
     }
 
     if ($method === 'POST' && $action === 'clear') {
+        $body = json_decode(file_get_contents('php://input'), true);
+        if (!is_array($body)) $body = [];
+        niulai_admin_require_write($body);
         // 清排行榜 + sentinel
         $allIds = $r->zRange(NIULAI_ZSET, 0, -1);
         if (is_array($allIds)) {
@@ -180,12 +203,17 @@ if ($tab === 'share') {
     }
     if ($method === 'POST' && $action === 'delete') {
         $body = json_decode(file_get_contents('php://input'), true);
+        if (!is_array($body)) $body = [];
+        niulai_admin_require_write($body);
         $id = intval($body['id'] ?? 0);
         if ($id <= 0) niulai_json(['ok' => false, 'error' => '缺少 id'], 400);
         $db->prepare("DELETE FROM share_records WHERE id = ?")->execute([$id]);
         niulai_json(['ok' => true, 'total' => (int)$db->query("SELECT COUNT(*) FROM share_records")->fetchColumn()]);
     }
     if ($method === 'POST' && $action === 'clear') {
+        $body = json_decode(file_get_contents('php://input'), true);
+        if (!is_array($body)) $body = [];
+        niulai_admin_require_write($body);
         $db->exec("DELETE FROM share_records");
         niulai_json(['ok' => true, 'total' => 0]);
     }
@@ -233,11 +261,16 @@ if ($tab === 'pk') {
         niulai_json(['ok' => true, 'rows' => $rows, 'total' => $total, 'page' => $page, 'per' => $per, 'pages' => $pages, 'byStatus' => $bySt]);
     }
     if ($method === 'POST' && $action === 'clear') {
+        $body = json_decode(file_get_contents('php://input'), true);
+        if (!is_array($body)) $body = [];
+        niulai_admin_require_write($body);
         $db->exec("DELETE FROM pk_invites");
         niulai_json(['ok' => true, 'total' => 0]);
     }
     if ($method === 'POST' && $action === 'delete') {
         $body = json_decode(file_get_contents('php://input'), true);
+        if (!is_array($body)) $body = [];
+        niulai_admin_require_write($body);
         $code = strtoupper(trim(strval($body['code'] ?? '')));
         if (!preg_match('/^[A-Z0-9]{6,12}$/', $code)) niulai_json(['ok' => false, 'error' => '邀请码格式不对'], 400);
         $db->prepare("DELETE FROM pk_invites WHERE code = ?")->execute([$code]);

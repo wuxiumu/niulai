@@ -44,6 +44,7 @@ function niulai_db() {
     )");
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_share_run ON share_records(run_id)");
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_share_created ON share_records(created_at)");
+    $pdo->exec("CREATE INDEX IF NOT EXISTS idx_share_ip_created ON share_records(ip_hint, created_at)");
 
     $pdo->exec("CREATE TABLE IF NOT EXISTS pk_invites (
         code                TEXT    PRIMARY KEY,
