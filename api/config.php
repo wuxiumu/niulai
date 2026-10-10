@@ -21,7 +21,7 @@ define('NIULAI_TOP', 100);
 // 可用环境变量 NIULAI_ADMIN_PASSWORD 覆盖；未设置时默认 654321
 define('NIULAI_ADMIN_PASSWORD', (getenv('NIULAI_ADMIN_PASSWORD') !== false && getenv('NIULAI_ADMIN_PASSWORD') !== '')
     ? getenv('NIULAI_ADMIN_PASSWORD')
-    : '654321');
+    : ''); // 生产必须设置 NIULAI_ADMIN_PASSWORD
 // 用户分享记录限流（按 IP / 本局 run_id 分别计数）
 define('NIULAI_SHARE_LIMIT_HOUR', (int)(getenv('NIULAI_SHARE_LIMIT_HOUR') ?: 20));
 define('NIULAI_SHARE_LIMIT_DAY',  (int)(getenv('NIULAI_SHARE_LIMIT_DAY')  ?: 80));

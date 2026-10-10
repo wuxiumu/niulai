@@ -20,6 +20,17 @@
 | 管理后台 | 浏览公开；写操作需密码（请改默认值） |
 | SEO/GEO | `includes/seo.php`、robots、sitemap |
 
+
+## 环境变量
+
+复制 `.env.example` → `.env`，**必须设置 `NIULAI_ADMIN_PASSWORD`**（默认口令已清空）。
+
+## 冒烟自检
+
+```bash
+bash scripts/smoke.sh
+```
+
 ## 快速预览
 
 ```bash
