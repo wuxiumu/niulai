@@ -1,0 +1,24 @@
+# macOS
+.DS_Store
+
+# WorkBuddy internal
+.workbuddy/
+.claude/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Environment
+.env
+.env.local
+
+# Runtime DB（分享/PK 运行时数据，勿提交）
+api/share.sqlite
+api/share.sqlite-*
