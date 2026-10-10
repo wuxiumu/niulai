@@ -1,0 +1,46 @@
+# 牛来运转 · robots.txt
+# 适配百度 / 搜狗 / 360 / 神马 / 谷歌等主流爬虫
+
+User-agent: *
+Allow: /
+Allow: /static/
+Disallow: /admin/
+Disallow: /api/
+Disallow: /includes/
+Disallow: /scripts/
+Disallow: /*.sqlite$
+
+# 百度
+User-agent: Baiduspider
+Allow: /
+Disallow: /admin/
+Disallow: /api/
+
+# 搜狗
+User-agent: Sogou web spider
+Allow: /
+Disallow: /admin/
+Disallow: /api/
+
+User-agent: Sogou inst spider
+Allow: /
+
+# 360
+User-agent: 360Spider
+Allow: /
+Disallow: /admin/
+Disallow: /api/
+
+# 神马（UC / 支付宝）
+User-agent: YisouSpider
+Allow: /
+Disallow: /admin/
+Disallow: /api/
+
+# 字节 / 头条
+User-agent: Bytespider
+Allow: /
+Disallow: /admin/
+Disallow: /api/
+
+Sitemap: /sitemap.php

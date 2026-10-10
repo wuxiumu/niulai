@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>牛来运转 · 管理后台</title>
+<style>
+  :root{
+    --gold:#ffd23f; --red:#e23b3b; --bg:#0f1115; --card:#171a21;
+    --line:rgba(255,255,255,.08); --dim:#9aa3b2; --main:#f4f6fb;
+    --green:#51d88a; --blue:#5a9bff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    background:radial-gradient(1200px 600px at 50% -10%,#1b2030,#0f1115);color:var(--main);min-height:100vh}
+  .wrap{max-width:1080px;margin:0 auto;padding:22px 18px 60px}
+  h1{font-size:22px;margin:0 0 4px;display:flex;align-items:center;gap:8px}
+  .sub{color:var(--dim);font-size:13px;margin-bottom:16px}
+  .sub a{color:var(--gold);text-decoration:none}
+  .tabs{display:flex;gap:6px;border-bottom:1px solid var(--line);margin-bottom:14px;flex-wrap:wrap}
+  .tab{padding:9px 14px;border-radius:9px 9px 0 0;cursor:pointer;font-size:14px;color:var(--dim);background:transparent;border:1px solid transparent;border-bottom:none;user-select:none}
+  .tab.active{color:#1a1300;background:var(--gold);border-color:var(--gold);font-weight:700}
+  .tab-pane{display:none;padding:6px 0}
+  .tab-pane.active{display:block}
+  .bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+  .bar input,.bar select{padding:8px 10px;border-radius:9px;border:1px solid var(--line);
+    background:var(--card);color:var(--main);font-size:14px}
+  .bar input[type=search]{flex:1;min-width:180px}
+  button{cursor:pointer;border:none;border-radius:9px;font-size:14px;padding:8px 14px;font-weight:600}
+  .btn-gold{background:linear-gradient(135deg,#ffd23f,#ffb300);color:#1a1300}
+  .btn-red{background:linear-gradient(135deg,#e23b3b,#b71c1c);color:#fff}
+  .btn-ghost{background:rgba(255,255,255,.06);color:var(--dim);border:1px solid var(--line)}
+  .btn-sm{padding:5px 10px;font-size:13px}
+  table{width:100%;border-collapse:collapse;background:var(--card);border-radius:12px;overflow:hidden}
+  th,td{padding:11px 12px;text-align:left;font-size:14px;border-bottom:1px solid var(--line)}
+  th{color:var(--dim);font-weight:600;background:rgba(255,255,255,.03);font-size:12.5px}
+  tbody tr:hover{background:rgba(255,210,63,.05)}
+  .rank{font-weight:800;color:var(--gold);width:46px}
+  .score{color:#ff6b6b;font-weight:700}
+  .empty{padding:30px;text-align:center;color:var(--dim)}
+  .ops{display:flex;gap:6px}
+  .pager{display:flex;gap:8px;align-items:center;justify-content:center;margin-top:16px;flex-wrap:wrap}
+  .pager button{background:rgba(255,255,255,.06);color:var(--main);border:1px solid var(--line)}
+  .pager .cur{background:var(--gold);color:#1a1300;border-color:var(--gold)}
+  .stat{color:var(--dim);font-size:13px}
+  .stat .pill{display:inline-block;padding:2px 8px;margin-right:6px;border-radius:6px;background:rgba(255,255,255,.04);border:1px solid var(--line)}
+  /* modal */
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:18px;z-index:50}
+  .overlay.show{display:flex}
+  .modal{width:100%;max-width:420px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px}
+  .modal h3{margin:0 0 14px;font-size:17px}
+  .field{margin-bottom:12px}
+  .field label{display:block;font-size:12.5px;color:var(--dim);margin-bottom:5px}
+  .field input,.field select{padding:9px 10px;border-radius:9px;border:1px solid var(--line);background:#0f1115;color:var(--main);font-size:14px;width:100%}
+  .modal .row{display:flex;gap:10px;justify-content:flex-end;margin-top:8px}
+  .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:#222;color:#fff;
+    padding:10px 18px;border-radius:10px;font-size:14px;opacity:0;transition:.25s;pointer-events:none;z-index:80;border:1px solid var(--line)}
+  .toast.show{opacity:1}
+  .ch-strip{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+  .ch-pill{padding:4px 10px;border-radius:999px;background:rgba(255,255,255,.04);border:1px solid var(--line);font-size:12px;color:var(--dim)}
+  .ch-pill b{color:var(--main);font-weight:700}
+  code{background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;font-size:12px}
+  .auth-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:-6px 0 14px;
+    padding:10px 12px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid var(--line);font-size:13px;color:var(--dim)}
+  .auth-bar.on{border-color:rgba(81,216,138,.35);background:rgba(81,216,138,.08);color:var(--green)}
+  .auth-bar .lab{flex:1;min-width:180px}
+  .auth-dot{width:8px;height:8px;border-radius:50%;background:#9aa3b2;flex-shrink:0}
+  .auth-bar.on .auth-dot{background:var(--green)}
+  .site-footer{margin-top:28px;padding:12px 0 4px;text-align:center;color:var(--dim);font-size:12px;line-height:1.7}
+  .site-footer a{color:var(--dim);text-decoration:none}
+  .site-footer a:hover{color:var(--gold)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🐂 牛来运转 · 管理后台</h1>
+  <div class="sub">
+    公开浏览 · 点写操作时授权 ·
+    <a href="../leaderboard.html" target="_blank">用户榜 ↗</a> ·
+    <a href="../index.php" target="_blank">返回首页 ↗</a>
+  </div>
+
+  <div class="auth-bar" id="authBar">
+    <span class="auth-dot" aria-hidden="true"></span>
+    <span class="lab" id="authLab">未授权：可浏览；点新增 / 编辑 / 删除时需输入密码。</span>
+    <button class="btn-ghost btn-sm" type="button" onclick="auth.clear()" id="authClearBtn" style="display:none">清空权限</button>
+  </div>
+
+  <div class="tabs" id="tabs">
+    <div class="tab active" data-tab="rank">🏆 排行榜</div>
+    <div class="tab" data-tab="share">🔗 分享记录</div>
+    <div class="tab" data-tab="pk">⚔️ 好友挑战</div>
+  </div>
+
+  <!-- ====== TAB: rank ====== -->
+  <div class="tab-pane active" id="pane-rank">
+    <div class="bar">
+      <input type="search" id="rq" placeholder="搜索昵称…" oninput="rank.go(1)">
+      <select id="rper" onchange="rank.go(1)">
+        <option value="10">每页 10</option>
+        <option value="20">每页 20</option>
+        <option value="50">每页 50</option>
+      </select>
+      <button class="btn-gold" onclick="rank.form()">+ 新增</button>
+      <button class="btn-red"  onclick="rank.clear()">清空全部</button>
+      <span class="stat" id="rstat"></span>
+    </div>
+    <table>
+      <thead><tr><th class="rank">#</th><th>昵称</th><th>分数(🪙)</th><th>结束原因</th><th>日期</th><th>操作</th></tr></thead>
+      <tbody id="rtbody"></tbody>
+    </table>
+    <div class="pager" id="rpager"></div>
+  </div>
+
+  <!-- ====== TAB: share ====== -->
+  <div class="tab-pane" id="pane-share">
+    <div class="ch-strip" id="schStrip"></div>
+    <div class="bar">
+      <input type="search" id="sq" placeholder="搜索 run_id / 接收方 / 备注…" oninput="share.go(1)">
+      <select id="schCh" onchange="share.go(1)">
+        <option value="">全部渠道</option>
+        <option value="system">system</option>
+        <option value="qrcode">qrcode</option>
+        <option value="poster">poster</option>
+        <option value="link">link</option>
+        <option value="copy">copy</option>
+        <option value="other">other</option>
+      </select>
+      <button class="btn-red"  onclick="share.clear()">清空记录</button>
+      <span class="stat" id="sstat"></span>
+    </div>
+    <table>
+      <thead><tr><th>#</th><th>run_id</th><th>渠道</th><th>横竖版</th><th>分数</th><th>接收方提示</th><th>备注</th><th>时间</th><th>操作</th></tr></thead>
+      <tbody id="stbody"></tbody>
+    </table>
+    <div class="pager" id="spager"></div>
+  </div>
+
+  <!-- ====== TAB: pk ====== -->
+  <div class="tab-pane" id="pane-pk">
+    <div class="ch-strip" id="pkStrip"></div>
+    <div class="bar">
+      <select id="pkSt" onchange="pk.go(1)">
+        <option value="">全部状态</option>
+        <option value="pending">待应战</option>
+        <option value="accepted">已完成</option>
+        <option value="expired">已过期</option>
+      </select>
+      <button class="btn-red"  onclick="pk.clear()">清空邀请</button>
+      <span class="stat" id="pkstat"></span>
+    </div>
+    <table>
+      <thead><tr><th>短码</th><th>状态</th><th>发起方</th><th>接受方</th><th>挑战</th><th>创建</th><th>接受</th><th>操作</th></tr></thead>
+      <tbody id="pktbody"></tbody>
+    </table>
+    <div class="pager" id="pkpager"></div>
+  </div>
+
+  <footer class="site-footer">
+    <div>© 2024-2026 <a href="https://chiguashentan.com/" target="_blank" rel="noopener">吃瓜神探</a> · chiguashentan.com</div>
+    <div class="icp"><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">沪ICP备2024062770号-1</a></div>
+  </footer>
+</div>
+
+<!-- form modal (rank) -->
+<div class="overlay" id="rOv">
+  <div class="modal">
+    <h3 id="mTitle">新增成绩</h3>
+    <input type="hidden" id="fId">
+    <div class="field"><label>昵称（≤12字）</label><input id="fName" maxlength="12" placeholder="牛人"></div>
+    <div class="field"><label>分数（净值，>0）</label><input id="fScore" type="number" min="1" step="1" placeholder="10000"></div>
+    <div class="field"><label>结束原因</label><input id="fReason" placeholder="牛市封神 / 杠杆爆仓 …"></div>
+    <div class="field"><label>日期</label><input id="fDate" placeholder="2026/08/17"></div>
+    <div class="row">
+      <button class="btn-ghost" onclick="rank.closeForm()">取消</button>
+      <button class="btn-gold" onclick="rank.save()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 写操作密码授权弹窗 -->
+<div class="overlay" id="authOv">
+  <div class="modal">
+    <h3>写操作授权</h3>
+    <p style="margin:0 0 12px;color:var(--dim);font-size:13px;line-height:1.5">输入管理密码后，本标签页内可进行全部新增 / 编辑 / 删除操作。可随时「清空权限」。</p>
+    <div class="field"><label>管理密码</label><input type="password" id="authPwdInput" autocomplete="current-password" placeholder="请输入密码"></div>
+    <div class="row">
+      <button class="btn-ghost" type="button" onclick="auth.cancelPrompt()">取消</button>
+      <button class="btn-gold" type="button" onclick="auth.submitPrompt()">确认授权</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+ *  公共
+ * ============================================================ */
+const baseApi = '../api/admin.php?api=1';
+const AUTH_KEY = 'niulai_admin_pwd';
+const AUTH_OK  = 'niulai_admin_authed';
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),1800);}
+function fmt(n){return Math.round(n).toLocaleString('zh-CN');}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function fmtTime(ts){if(!ts)return '—';const d=new Date(ts*1000);const p=n=>String(n).padStart(2,'0');return `${d.getFullYear()}/${p(d.getMonth()+1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;}
+
+const auth = {
+  _waiter: null,
+  has(){
+    try{ return sessionStorage.getItem(AUTH_OK)==='1' && !!sessionStorage.getItem(AUTH_KEY); }
+    catch(_){ return false; }
+  },
+  getPwd(){
+    try{ return sessionStorage.getItem(AUTH_KEY)||''; }
+    catch(_){ return ''; }
+  },
+  /** 记录授权状态（密码已通过服务端校验） */
+  remember(pwd){
+    try{
+      sessionStorage.setItem(AUTH_KEY, pwd);
+      sessionStorage.setItem(AUTH_OK, '1');
+    }catch(_){}
+    this.sync();
+  },
+  /** 清空权限状态；silent=true 时不弹 toast（用于鉴权失败自动清） */
+  clear(silent){
+    try{
+      sessionStorage.removeItem(AUTH_KEY);
+      sessionStorage.removeItem(AUTH_OK);
+    }catch(_){}
+    this.sync();
+    if (!silent) toast('已清空权限');
+  },
+  sync(){
+    const on = this.has();
+    document.getElementById('authBar').classList.toggle('on', on);
+    document.getElementById('authLab').textContent = on
+      ? '已授权：可进行全部新增 / 编辑 / 删除（本标签页有效）。'
+      : '未授权：可浏览；点新增 / 编辑 / 删除时需输入密码。';
+    document.getElementById('authClearBtn').style.display = on ? '' : 'none';
+  },
+  openPrompt(){
+    return new Promise(resolve=>{
+      this._waiter = resolve;
+      const ov = document.getElementById('authOv');
+      const inp = document.getElementById('authPwdInput');
+      inp.value = '';
+      ov.classList.add('show');
+      setTimeout(()=>inp.focus(), 50);
+    });
+  },
+  cancelPrompt(){
+    document.getElementById('authOv').classList.remove('show');
+    if (this._waiter){ this._waiter(null); this._waiter = null; }
+  },
+  async submitPrompt(){
+    const inp = document.getElementById('authPwdInput');
+    const pwd = (inp.value||'').trim();
+    if (!pwd){ toast('请输入管理密码'); inp.focus(); return; }
+    const ok = await this.verify(pwd);
+    if (!ok){ toast('密码错误'); inp.select(); return; }
+    document.getElementById('authOv').classList.remove('show');
+    this.remember(pwd);
+    toast('授权成功');
+    if (this._waiter){ this._waiter(pwd); this._waiter = null; }
+  },
+  async verify(pwd){
+    try{
+      const r = await fetch(baseApi+'&tab=auth&action=verify', {
+        method:'POST',
+        headers:{'Content-Type':'application/json','X-Admin-Password':pwd},
+        body: JSON.stringify({ password: pwd })
+      });
+      const j = await r.json();
+      return !!(r.ok && j && j.ok);
+    }catch(_){ return false; }
+  },
+  /**
+   * 写操作前确保已授权：
+   * - 已有权限 → 直接返回密码
+   * - 否则弹窗输入 → 服务端校验 → 记录状态后返回
+   */
+  async ensure(){
+    if (this.has()) return this.getPwd();
+    return await this.openPrompt();
+  }
+};
+auth.sync();
+
+document.getElementById('authOv').addEventListener('click', e=>{
+  if (e.target.id === 'authOv') auth.cancelPrompt();
+});
+document.getElementById('authPwdInput').addEventListener('keydown', e=>{
+  if (e.key === 'Enter') auth.submitPrompt();
+  if (e.key === 'Escape') auth.cancelPrompt();
+});
+
+/** 带授权的写请求；401 时清空权限并提示 */
+async function adminWrite(actionUrl, bodyObj){
+  const pwd = await auth.ensure();
+  if (!pwd){ toast('已取消：需要授权'); return null; }
+  const body = Object.assign({}, bodyObj || {}, { password: pwd });
+  const r = await fetch(actionUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Admin-Password': pwd },
+    body: JSON.stringify(body)
+  });
+  let j = {};
+  try { j = await r.json(); } catch(_){ j = { ok:false, error:'响应异常' }; }
+  if (r.status === 401 || j.needPassword){
+    auth.clear(true);
+    toast('授权已失效，请重新输入密码');
+    return j;
+  }
+  // 写成功也巩固一次授权状态（兼容旧会话只有密码没 flag）
+  if (j && j.ok) auth.remember(pwd);
+  return j;
+}
+
+/* tab 切换 */
+document.getElementById('tabs').addEventListener('click', e=>{
+  const t = e.target.closest('.tab'); if(!t) return;
+  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active', x===t));
+  const name = t.dataset.tab;
+  document.querySelectorAll('.tab-pane').forEach(p=>p.classList.toggle('active', p.id==='pane-'+name));
+  // 按需首次加载
+  if (name==='share' && !share._loaded) share.load();
+  if (name==='pk'    && !pk._loaded)    pk.load();
+});
+
+/* ============================================================
+ *  tab: rank
+ * ============================================================ */
+const rank = {
+  page: 1, per: 10, q: '',
+  async load(){
+    const u = `${baseApi}&tab=rank&action=list&page=${this.page}&per=${this.per}&q=${encodeURIComponent(this.q)}`;
+    const j = await (await fetch(u)).json();
+    if (!j.ok){toast('加载失败：'+(j.error||''));return;}
+    const tb = document.getElementById('rtbody');
+    if (!j.rows.length){tb.innerHTML='<tr><td colspan="6" class="empty">暂无数据，点「新增」添加，或去游戏里跑一局</td></tr>';}
+    else {
+      tb.innerHTML = j.rows.map((e,i)=>{
+        const r=(j.page-1)*j.per+i+1;
+        return `<tr>
+          <td class="rank">${r}</td>
+          <td>${esc(e.name)}</td>
+          <td class="score">${fmt(e.score)}</td>
+          <td>${esc(e.reason||'—')}</td>
+          <td>${esc(e.date||'—')}</td>
+          <td><div class="ops">
+            <button class="btn-ghost btn-sm" onclick='rank.form(${JSON.stringify(e).replace(/'/g,"\\'")})'>编辑</button>
+            <button class="btn-red btn-sm" onclick='rank.del("${e.id}")'>删除</button>
+          </div></td></tr>`;
+      }).join('');
+    }
+    document.getElementById('rstat').textContent = `共 ${j.total} 条 · 第 ${j.page}/${j.pages} 页`;
+    this.renderPager(j);
+  },
+  renderPager(j){
+    const p=document.getElementById('rpager'); if(j.pages<=1){p.innerHTML='';return;}
+    let h='';
+    h+=`<button ${j.page<=1?'disabled':''} onclick="rank.go(${j.page-1})">‹ 上一页</button>`;
+    const s=Math.max(1,j.page-2),e=Math.min(j.pages,j.page+2);
+    for(let i=s;i<=e;i++) h+=`<button class="${i===j.page?'cur':''}" onclick="rank.go(${i})">${i}</button>`;
+    h+=`<button ${j.page>=j.pages?'disabled':''} onclick="rank.go(${j.page+1})">下一页 ›</button>`;
+    p.innerHTML=h;
+  },
+  go(p){this.page=Math.max(1,p);this.load();},
+  setPer(v){this.per=+v;this.page=1;this.load();},
+
+  form(e){
+    document.getElementById('mTitle').textContent = e?'编辑成绩':'新增成绩';
+    document.getElementById('fId').value     = e?e.id:'';
+    document.getElementById('fName').value   = e?e.name:'';
+    document.getElementById('fScore').value  = e?e.score:'';
+    document.getElementById('fReason').value = e?e.reason:'';
+    document.getElementById('fDate').value   = e?e.date:'';
+    if(!e) document.getElementById('fDate').value = new Date().toLocaleDateString('zh-CN').replace(/-/g,'/');
+    document.getElementById('rOv').classList.add('show');
+  },
+  closeForm(){document.getElementById('rOv').classList.remove('show');},
+  async save(){
+    const name=document.getElementById('fName').value.trim();
+    const score=parseFloat(document.getElementById('fScore').value);
+    const reason=document.getElementById('fReason').value.trim();
+    const date=document.getElementById('fDate').value.trim();
+    if(!(score>0)){toast('分数必须 > 0');return;}
+    const body={id:document.getElementById('fId').value,name,score,reason,date};
+    const j=await adminWrite(baseApi+'&tab=rank&action=save', body);
+    if(!j) return;
+    if(!j.ok){toast('保存失败：'+(j.error||''));return;}
+    this.closeForm();toast('已保存');this.load();
+  },
+  async del(id){
+    if(!confirm('确定删除这条成绩？'))return;
+    const j=await adminWrite(baseApi+'&tab=rank&action=delete', {id});
+    if(!j) return;
+    if(!j.ok){toast('删除失败：'+(j.error||''));return;}
+    toast('已删除');this.load();
+  },
+  async clear(){
+    if(!confirm('⚠️ 确定清空全部排行榜数据？此操作不可恢复！'))return;
+    const j=await adminWrite(baseApi+'&tab=rank&action=clear', {});
+    if(!j) return;
+    if(!j.ok){toast('清空失败：'+(j.error||''));return;}
+    this.page=1;toast('已清空全部数据');this.load();
+  }
+};
+document.getElementById('rper').addEventListener('change', e=>rank.setPer(e.target.value));
+document.getElementById('rq').addEventListener('input',  e=>{rank.q=e.target.value.trim();rank.page=1;rank.load();});
+document.getElementById('rOv').addEventListener('click',e=>{if(e.target.id==='rOv')rank.closeForm();});
+
+/* ============================================================
+ *  tab: share
+ * ============================================================ */
+const share = {
+  page: 1, per: 20, q: '', channel: '', _loaded: false,
+  async load(){
+    const u = `${baseApi}&tab=share&action=list&page=${this.page}&per=${this.per}&q=${encodeURIComponent(this.q)}&channel=${encodeURIComponent(this.channel)}`;
+    const j = await (await fetch(u)).json();
+    if (!j.ok){toast('加载失败：'+(j.error||''));return;}
+    this._loaded = true;
+
+    // 渠道统计条
+    const bc = j.byChannel || {};
+    document.getElementById('schStrip').innerHTML =
+      ['system','qrcode','poster','link','copy','other'].map(k=>`<span class="ch-pill">${k} <b>${bc[k]||0}</b></span>`).join('');
+
+    const tb = document.getElementById('stbody');
+    if (!j.rows.length){tb.innerHTML='<tr><td colspan="9" class="empty">暂无分享记录</td></tr>';}
+    else {
+      tb.innerHTML = j.rows.map((e,i)=>{
+        const num=(j.page-1)*j.per+i+1;
+        return `<tr>
+          <td>${num}</td>
+          <td><code>${esc(e.run_id)}</code></td>
+          <td>${esc(e.channel)}</td>
+          <td>${esc(e.posterFormat||'—')}</td>
+          <td>${fmt(e.score)}</td>
+          <td>${esc(e.recipientHint||'—')}</td>
+          <td>${esc(e.note||'—')}</td>
+          <td>${fmtTime(e.createdAt)}</td>
+          <td><div class="ops">
+            <button class="btn-red btn-sm" onclick='share.del(${e.id})'>删除</button>
+          </div></td></tr>`;
+      }).join('');
+    }
+    document.getElementById('sstat').textContent = `共 ${j.total} 条 · 第 ${j.page}/${j.pages} 页`;
+    this.renderPager(j, 'spager');
+  },
+  renderPager(j, id){
+    const p=document.getElementById(id); if(j.pages<=1){p.innerHTML='';return;}
+    let h='';
+    h+=`<button ${j.page<=1?'disabled':''} onclick="${id==='spager'?'share':'pk'}.go(${j.page-1})">‹ 上一页</button>`;
+    const s=Math.max(1,j.page-2),e=Math.min(j.pages,j.page+2);
+    for(let i=s;i<=e;i++) h+=`<button class="${i===j.page?'cur':''}" onclick="${id==='spager'?'share':'pk'}.go(${i})">${i}</button>`;
+    h+=`<button ${j.page>=j.pages?'disabled':''} onclick="${id==='spager'?'share':'pk'}.go(${j.page+1})">下一页 ›</button>`;
+    p.innerHTML=h;
+  },
+  go(p){this.page=Math.max(1,p);this.load();},
+  setPer(v){this.per=+v;this.page=1;this.load();},
+
+  async del(id){
+    if(!confirm('确定删除这条分享记录？'))return;
+    const j = await adminWrite(baseApi+'&tab=share&action=delete', {id});
+    if(!j) return;
+    if(!j.ok){toast('删除失败：'+(j.error||''));return;}
+    toast('已删除');this.load();
+  },
+  async clear(){
+    if(!confirm('确定清空全部分享记录？此操作不可恢复！'))return;
+    const j = await adminWrite(baseApi+'&tab=share&action=clear', {});
+    if(!j) return;
+    if(!j.ok){toast('清空失败：'+(j.error||''));return;}
+    this.page=1;toast('已清空');this.load();
+  }
+};
+document.getElementById('sq').addEventListener('input', e=>{share.q=e.target.value.trim();share.page=1;share.load();});
+document.getElementById('schCh').addEventListener('change', e=>{share.channel=e.target.value;share.page=1;share.load();});
+
+/* ============================================================
+ *  tab: pk
+ * ============================================================ */
+const pk = {
+  page: 1, per: 20, status: '', _loaded: false,
+  async load(){
+    const u = `${baseApi}&tab=pk&action=list&page=${this.page}&per=${this.per}&status=${encodeURIComponent(this.status)}`;
+    const j = await (await fetch(u)).json();
+    if (!j.ok){toast('加载失败：'+(j.error||''));return;}
+    this._loaded = true;
+
+    const bs = j.byStatus || {};
+    document.getElementById('pkStrip').innerHTML =
+      [['pending','待应战'],['accepted','已完成'],['expired','已过期']].map(([k,lab])=>`<span class="ch-pill">${lab} <b>${bs[k]||0}</b></span>`).join('');
+
+    const tb = document.getElementById('pktbody');
+    if (!j.rows.length){tb.innerHTML='<tr><td colspan="8" class="empty">暂无 PK 邀请</td></tr>';}
+    else {
+      tb.innerHTML = j.rows.map(e=>{
+        const ch = e.challenger || {};
+        const re = e.recipient || {};
+        return `<tr>
+          <td><code>${esc(e.code)}</code></td>
+          <td>${esc(e.status)}</td>
+          <td>${esc(ch.name||'—')} <small>(${esc(ch.runId||'')})</small><br><b class="score">${fmt(ch.score||0)}</b></td>
+          <td>${re? esc(re.name)+' <small>('+esc(re.runId)+')</small><br><b class="score">'+fmt(re.score)+'</b>' : '<span style="color:var(--dim)">未接受</span>'}</td>
+          <td>${esc(e.challenge||'—')}</td>
+          <td>${fmtTime(e.createdAt)}</td>
+          <td>${fmtTime(e.acceptedAt)}</td>
+          <td><div class="ops"><button class="btn-red btn-sm" onclick='pk.del("${e.code}")'>删除</button></div></td>
+        </tr>`;
+      }).join('');
+    }
+    document.getElementById('pkstat').textContent = `共 ${j.total} 条 · 第 ${j.page}/${j.pages} 页`;
+    share.renderPager(j, 'pkpager');
+  },
+  go(p){this.page=Math.max(1,p);this.load();},
+  async del(code){
+    if(!confirm('确定删除这条挑战邀请（'+code+'）？'))return;
+    const j = await adminWrite(baseApi+'&tab=pk&action=delete', {code});
+    if(!j) return;
+    if(!j.ok){toast('删除失败：'+(j.error||''));return;}
+    toast('已删除');this.load();
+  },
+  async clear(){
+    if(!confirm('确定清空全部挑战邀请？此操作不可恢复！'))return;
+    const j = await adminWrite(baseApi+'&tab=pk&action=clear', {});
+    if(!j) return;
+    if(!j.ok){toast('清空失败：'+(j.error||''));return;}
+    this.page=1;toast('已清空');this.load();
+  }
+};
+document.getElementById('pkSt').addEventListener('change', e=>{pk.status=e.target.value;pk.page=1;pk.load();});
+
+/* 首次加载：默认 tab=rank */
+rank.load();
+</script>
+</body>
+</html>
