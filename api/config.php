@@ -18,7 +18,7 @@ define('NIULAI_KEEP', 1000);
 // 对外默认展示条数
 define('NIULAI_TOP', 100);
 // 管理后台写操作密码（浏览公开；新增/编辑/删除需此密码）
-// 可用环境变量 NIULAI_ADMIN_PASSWORD 覆盖；未设置时默认 654321
+// 可用环境变量 NIULAI_ADMIN_PASSWORD 覆盖；未设置时默认为空（拒绝弱口令）
 define('NIULAI_ADMIN_PASSWORD', (getenv('NIULAI_ADMIN_PASSWORD') !== false && getenv('NIULAI_ADMIN_PASSWORD') !== '')
     ? getenv('NIULAI_ADMIN_PASSWORD')
     : ''); // 生产必须设置 NIULAI_ADMIN_PASSWORD
