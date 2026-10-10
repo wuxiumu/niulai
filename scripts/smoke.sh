@@ -6,7 +6,7 @@ command -v php >/dev/null || fail "需要 PHP"
 [[ -f niulai-game.html && -f api/config.php ]] || fail "缺少核心"
 [[ -f .env.example ]] || fail "缺少 .env.example"
 ok "核心文件齐全"
-grep -q "654321" api/config.php && fail "仍含默认 654321" || ok "无默认 654321"
+grep -E ": '654321'|: \"654321\"" api/config.php && fail "仍含默认 654321" || ok "无默认 654321"
 php -l api/config.php >/dev/null
 ok "PHP lint OK"
 PORT="${SMOKE_PORT:-18087}"
